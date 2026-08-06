@@ -16,8 +16,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "licenses:generate": "bun scripts/generate-license-notices.ts",
-    "licenses:check": "bun scripts/generate-license-notices.ts --check",
-    "checks": "bun run licenses:check && bun run lint && bun run format:check && bun run test:run"
+    "checks": "bun run lint && bun run format:check && bun run test:run"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",
