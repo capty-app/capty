@@ -1116,8 +1116,7 @@ describe('Screenshot Module', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const calls = MockBrowserWindow.mock.calls as any[];
       const windowConfig = calls[0]?.[0] as
-        | { width: number; height: number }
-        | undefined;
+        { width: number; height: number } | undefined;
       if (windowConfig) {
         expect(windowConfig.width).toBeLessThanOrEqual(1920 - 80); // screenWidth - padding*2
         expect(windowConfig.height).toBeLessThanOrEqual(1080 - 80);
@@ -1169,8 +1168,7 @@ describe('Screenshot Module', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const calls = MockBrowserWindow.mock.calls as any[];
       const windowConfig = calls[0]?.[0] as
-        | { minWidth: number; minHeight: number }
-        | undefined;
+        { minWidth: number; minHeight: number } | undefined;
       if (windowConfig) {
         expect(windowConfig.minWidth).toBe(950);
         expect(windowConfig.minHeight).toBe(650);

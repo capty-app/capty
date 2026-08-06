@@ -50,14 +50,7 @@ export interface RecordingStateInfo {
 export type VideoResolution = 'original' | '4k' | '1080p' | '720p' | '480p';
 
 export type VideoFrameRate =
-  | '60'
-  | '50'
-  | '40'
-  | '30'
-  | '25'
-  | '24'
-  | '20'
-  | '10';
+  '60' | '50' | '40' | '30' | '25' | '24' | '20' | '10';
 
 export type VideoFormat = 'mp4' | 'gif';
 

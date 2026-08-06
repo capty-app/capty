@@ -16,8 +16,9 @@ Tests use Vitest with vi.mock() for mocking modules (electron, AWS SDK, config),
 
 ## Code Style
 
-- **Formatting**: Use bun-precommit
+- **Formatting**: Use `bun run format` to fix, `bun run format:check` to verify
 - **Linting**: ESLint - Use `bun lint` to make sure no lint errors
+- **All checks**: `bun run checks` runs lint + format check + tests (verify only, no fixing) — same as CI
 - **Imports**: Group by external → components → hooks → types → utils. Use `type` for type-only imports (`import type { ToolType }`)
 - **Types**: Store shared types in `src/types/` (accessible to main + renderer). Use discriminated unions for polymorphic data
 - **Naming**: kebab-case (components), camelCase (functions/vars), SCREAMING_SNAKE_CASE (constants like `MACOS_COLORS`)

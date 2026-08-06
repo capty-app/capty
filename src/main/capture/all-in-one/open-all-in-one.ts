@@ -13,8 +13,8 @@ let onCloseCallback: (() => void) | null = null;
 let onScreenshotCallback: (() => void) | null = null;
 let onRecordCallback: (() => void) | null = null;
 let onUpdateSizeCallback:
-  | ((size: { width: number; height: number }) => void | Promise<void>)
-  | null = null;
+  ((size: { width: number; height: number }) => void | Promise<void>) | null =
+  null;
 let onSizeEditorOpenedCallback: (() => void) | null = null;
 let onSizeEditorClosedCallback: (() => void) | null = null;
 let eventCleanup: (() => void) | null = null;

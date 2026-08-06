@@ -424,8 +424,7 @@ export default function VideoDrawingOverlay({
 
   const handleMouseUp = useCallback(() => {
     const committedTool = currentAnnotation?.type as
-      | VideoDrawingTool
-      | undefined;
+      VideoDrawingTool | undefined;
     finishDrawing();
     if (
       committedTool &&

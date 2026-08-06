@@ -101,8 +101,7 @@ interface DrawLayerArgs {
   shadow: number;
   hasWindowFrame: boolean;
   frameTheme:
-    | (typeof WINDOW_FRAME_THEMES)[keyof typeof WINDOW_FRAME_THEMES]
-    | null;
+    (typeof WINDOW_FRAME_THEMES)[keyof typeof WINDOW_FRAME_THEMES] | null;
   titleBarHeight: number;
   balanceCrop: BalanceCrop;
   insetColor: string | null;
