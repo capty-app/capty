@@ -89,6 +89,9 @@ const mockOnboarding = {
 };
 vi.mock('@/main/onboarding', () => mockOnboarding);
 
+const mockLegal = { init: vi.fn() };
+vi.mock('@/main/legal', () => mockLegal);
+
 const mockAllInOne = { init: vi.fn(), default: vi.fn() };
 vi.mock('@/main/capture/all-in-one', () => mockAllInOne);
 

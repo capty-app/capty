@@ -5,8 +5,8 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "vite",
-    "build-mac": "rm -rf ./dist && rm -rf ./dist-electron && tsc && vite build && electron-builder --mac --universal -p never",
-    "build-mac:local": "rm -rf ./dist && rm -rf ./dist-electron && tsc && vite build && electron-builder --mac --universal -c.mac.identity=null -p never",
+    "build-mac": "bun run licenses:generate && rm -rf ./dist && rm -rf ./dist-electron && tsc && vite build && electron-builder --mac --universal -p never",
+    "build-mac:local": "bun run licenses:generate && rm -rf ./dist && rm -rf ./dist-electron && tsc && vite build && electron-builder --mac --universal -c.mac.identity=null -p never",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
@@ -15,7 +15,9 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "checks": "bun run lint && bun run format:check && bun run test:run"
+    "licenses:generate": "bun scripts/generate-license-notices.ts",
+    "licenses:check": "bun scripts/generate-license-notices.ts --check",
+    "checks": "bun run licenses:check && bun run lint && bun run format:check && bun run test:run"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",

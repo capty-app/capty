@@ -26,6 +26,7 @@ import * as capture from '@/main/capture';
 import * as activation from '@/main/activation';
 import * as onboarding from '@/main/onboarding';
 import * as allInOne from '@/main/capture/all-in-one';
+import * as legal from '@/main/legal';
 import { initDock } from '@/main/utils/dock';
 import { createVideoEditorWindow } from '@/main/capture/video/video-editor';
 import {
@@ -108,6 +109,7 @@ const initializeModules = async () => {
   preferences.init();
   cloud.init();
   allInOne.init();
+  legal.init();
 
   await onboarding.showOnboardingOrRun(initializeRuntimeModules);
 };
