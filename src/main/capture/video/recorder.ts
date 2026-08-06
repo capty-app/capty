@@ -199,6 +199,8 @@ export async function stopRecording(
   }
 
   const outputPath = currentRecordingPath;
+  await hideControl();
+
   let response: RecorderResponse | null = null;
   let stopError: Error | null = null;
 
@@ -216,7 +218,6 @@ export async function stopRecording(
     stopError = error instanceof Error ? error : new Error(String(error));
   }
 
-  await hideControl();
   await hideRecordingOverlay();
   hideRecordingTray();
 

@@ -236,6 +236,32 @@ describe('recorder', () => {
       expect(m.getRecordingState()).toBe('idle');
     });
 
+    it('hides the control before recording finalization completes', async () => {
+      mockDaemonCall.mockResolvedValueOnce({ success: true });
+      const m = await import('@/main/capture/video/recorder');
+      await m.startRecordingWithConfig({ outputPath: '/out.mov' }, vi.fn());
+
+      let resolveStop:
+        | ((response: { success: boolean; outputPath: string }) => void)
+        | undefined;
+      mockDaemonCall.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveStop = resolve;
+          })
+      );
+
+      const hideControl = vi.fn();
+      const stopPromise = m.stopRecording(hideControl);
+
+      expect(hideControl).toHaveBeenCalledTimes(1);
+      await Promise.resolve();
+      expect(resolveStop).toBeDefined();
+
+      resolveStop?.({ success: true, outputPath: '/final/out.mov' });
+      await expect(stopPromise).resolves.toBe('/final/out.mov');
+    });
+
     it('throws on stop failure but still resets state', async () => {
       mockDaemonCall.mockResolvedValueOnce({ success: true });
       const m = await import('@/main/capture/video/recorder');
