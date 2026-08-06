@@ -7,8 +7,6 @@ interface PackageManifest {
   version?: string;
   license?: string | { type?: string };
   licenses?: Array<string | { type?: string }>;
-  repository?: string | { url?: string };
-  homepage?: string;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -25,17 +23,22 @@ interface QueueEntry {
 interface PackageNotice {
   identifier: string;
   license: string;
-  repository?: string;
   licenseTexts: Array<{ fileName: string; text: string }>;
+}
+
+interface PackageNoticeGroup {
+  identifiers: string[];
+  license: string;
+  licenseTexts: PackageNotice['licenseTexts'];
 }
 
 const LICENSE_FILE_PATTERN = /^(license|copying|notice)(?:$|[.-])/i;
 const TYPES_PACKAGE_PREFIX = '@types/';
 const BUNDLED_DEV_PACKAGES = ['electron', 'tailwindcss', 'tw-animate-css'];
 const PACKAGE_LICENSE_OVERRIDES: Record<string, string> = {
-  'lazy-val@1.0.5': 'resources/licenses/npm-overrides/lazy-val-1.0.5-MIT.txt',
+  'lazy-val@1.0.5': 'scripts/license-overrides/lazy-val-1.0.5-MIT.txt',
   'react-remove-scroll-bar@2.3.8':
-    'resources/licenses/npm-overrides/react-remove-scroll-bar-2.3.8-MIT.txt',
+    'scripts/license-overrides/react-remove-scroll-bar-2.3.8-MIT.txt',
 };
 
 const PROJECT_ROOT = path.resolve(
@@ -92,26 +95,6 @@ function normalizeLicense(manifest: PackageManifest): string {
   return licenses?.join(' OR ') ?? '';
 }
 
-function normalizeRepository(manifest: PackageManifest): string | undefined {
-  const repository =
-    typeof manifest.repository === 'string'
-      ? manifest.repository
-      : manifest.repository?.url;
-
-  if (!repository) {
-    return manifest.homepage;
-  }
-
-  if (!repository.includes('://') && repository.includes('/')) {
-    return `https://github.com/${repository}`;
-  }
-
-  return repository
-    .replace(/^git\+/, '')
-    .replace(/^git:\/\//, 'https://')
-    .replace(/\.git$/, '');
-}
-
 function readLicenseTexts(
   projectRoot: string,
   packageDirectory: string,
@@ -135,7 +118,7 @@ function readLicenseTexts(
   const overridePath = PACKAGE_LICENSE_OVERRIDES[identifier];
   if (!overridePath) {
     throw new Error(
-      `No license text found for ${identifier}. Save a copy of its license under resources/licenses/npm-overrides and register it in PACKAGE_LICENSE_OVERRIDES.`
+      `No license text found for ${identifier}. Save a copy under scripts/license-overrides and register it in PACKAGE_LICENSE_OVERRIDES.`
     );
   }
 
@@ -236,7 +219,6 @@ function collectPackageNotices(projectRoot: string): PackageNotice[] {
       notices.set(identifier, {
         identifier,
         license,
-        repository: normalizeRepository(manifest),
         licenseTexts: readLicenseTexts(
           projectRoot,
           packageDirectory,
@@ -253,6 +235,28 @@ function collectPackageNotices(projectRoot: string): PackageNotice[] {
   return [...notices.values()].sort((first, second) =>
     first.identifier.localeCompare(second.identifier)
   );
+}
+
+function groupPackageNotices(notices: PackageNotice[]): PackageNoticeGroup[] {
+  const groups = new Map<string, PackageNoticeGroup>();
+
+  for (const notice of notices) {
+    const key = JSON.stringify([notice.license, notice.licenseTexts]);
+    const group = groups.get(key);
+
+    if (group) {
+      group.identifiers.push(notice.identifier);
+      continue;
+    }
+
+    groups.set(key, {
+      identifiers: [notice.identifier],
+      license: notice.license,
+      licenseTexts: notice.licenseTexts,
+    });
+  }
+
+  return [...groups.values()];
 }
 
 function renderExternalComponents(): string {
@@ -284,25 +288,29 @@ function renderExternalComponents(): string {
   ].join('\n');
 }
 
-function renderPackageNotice(notice: PackageNotice): string {
-  const metadata = [
-    notice.identifier,
-    `License: ${notice.license}`,
-    notice.repository ? `Source: ${notice.repository}` : undefined,
-  ].filter((line): line is string => Boolean(line));
-  const licenseTexts = notice.licenseTexts.flatMap(({ fileName, text }) => [
+function renderPackageNotice(group: PackageNoticeGroup): string {
+  const identifiers =
+    group.identifiers.length === 1
+      ? group.identifiers
+      : [
+          'Packages:',
+          ...group.identifiers.map(identifier => `- ${identifier}`),
+        ];
+  const licenseTexts = group.licenseTexts.flatMap(({ fileName, text }) => [
     '',
     `--- ${fileName} ---`,
     '',
     text,
   ]);
 
-  return [...metadata, ...licenseTexts].join('\n');
+  return [...identifiers, `License: ${group.license}`, ...licenseTexts].join(
+    '\n'
+  );
 }
 
 function generateLicenseNotices(projectRoot: string): string {
   const separator = '='.repeat(80);
-  const packageNotices = collectPackageNotices(projectRoot)
+  const packageNotices = groupPackageNotices(collectPackageNotices(projectRoot))
     .map(renderPackageNotice)
     .join(`\n\n${separator}\n\n`);
 
