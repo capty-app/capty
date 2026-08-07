@@ -72,6 +72,31 @@ describe('paths extra', () => {
     });
   });
 
+  describe('getLicenseNoticesPath', () => {
+    it('returns the repository notice path when it exists', async () => {
+      mockExistsSync.mockImplementation((filePath: string) =>
+        String(filePath).startsWith('/app/resources/licenses/')
+      );
+      const { getLicenseNoticesPath } = await import('@/main/utils/paths');
+
+      expect(getLicenseNoticesPath()).toBe(
+        '/app/resources/licenses/THIRD_PARTY_NOTICES.txt'
+      );
+    });
+
+    it('returns the packaged notice path outside development', async () => {
+      const originalResourcesPath = process.resourcesPath;
+      process.resourcesPath = '/resources';
+      mockExistsSync.mockReturnValue(false);
+      const { getLicenseNoticesPath } = await import('@/main/utils/paths');
+
+      expect(getLicenseNoticesPath()).toBe(
+        '/resources/licenses/THIRD_PARTY_NOTICES.txt'
+      );
+      process.resourcesPath = originalResourcesPath;
+    });
+  });
+
   describe('isValidDirectory', () => {
     it('returns true when path is a directory', async () => {
       mockStatSync.mockReturnValue({ isDirectory: () => true });

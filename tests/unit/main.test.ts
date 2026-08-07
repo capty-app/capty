@@ -136,6 +136,11 @@ const mockOnboarding = {
 };
 vi.mock('@/main/onboarding', () => mockOnboarding);
 
+const mockLegal = {
+  init: vi.fn(),
+};
+vi.mock('@/main/legal', () => mockLegal);
+
 describe('Main Process', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -205,6 +210,12 @@ describe('Main Process', () => {
       await import('@/main/main');
 
       expect(mockAllInOne.init).toHaveBeenCalled();
+    });
+
+    it('should initialize legal IPC', async () => {
+      await import('@/main/main');
+
+      expect(mockLegal.init).toHaveBeenCalled();
     });
 
     it('should always call showOnboardingOrRun regardless of license', async () => {

@@ -7,6 +7,7 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  FileText,
 } from 'lucide-react';
 import {
   Card,
@@ -69,6 +70,10 @@ export default function AboutTab() {
 
   const handleInstallUpdate = useCallback(async () => {
     await window.ipcRenderer.invoke('update:install');
+  }, []);
+
+  const handleOpenLicenseNotices = useCallback(() => {
+    window.ipcRenderer.send('legal:open-notices');
   }, []);
 
   const getStatusIcon = (status: UpdateStatus) => {
@@ -234,13 +239,23 @@ export default function AboutTab() {
                 Made with love for the macOS community
               </span>
             </div>
+            <div className="flex items-center gap-3 text-sm">
+              <FileText className="text-muted-foreground h-4 w-4" />
+              <button
+                type="button"
+                onClick={handleOpenLicenseNotices}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Open-source licenses
+              </button>
+            </div>
           </div>
 
           <Separator />
 
           <div className="flex items-center justify-between">
             <div className="text-muted-foreground text-xs">
-              <p>&copy; 2025 Capty. All rights reserved.</p>
+              <p>&copy; 2025&ndash;2026 Capty. Licensed under AGPL-3.0.</p>
             </div>
             <Button
               variant="outline"

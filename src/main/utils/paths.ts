@@ -41,6 +41,25 @@ export function getLicenseFilePath(): string {
   return path.join(getConfigDir(), 'license.json');
 }
 
+export function getLicenseNoticesPath(): string {
+  const devPath = path.join(
+    app.getAppPath(),
+    'resources',
+    'licenses',
+    'THIRD_PARTY_NOTICES.txt'
+  );
+
+  if (fs.existsSync(devPath)) {
+    return devPath;
+  }
+
+  return path.join(
+    process.resourcesPath || '',
+    'licenses',
+    'THIRD_PARTY_NOTICES.txt'
+  );
+}
+
 export function getHistoryFilePath(): string {
   return path.join(getConfigDir(), 'history.json');
 }

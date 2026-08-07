@@ -52,6 +52,18 @@
     {
       "from": "public/sounds",
       "to": "sounds"
+    },
+    {
+      "from": "LICENSE",
+      "to": "licenses/Capty-AGPL-3.0.txt"
+    },
+    {
+      "from": "resources/licenses",
+      "to": "licenses"
+    },
+    {
+      "from": "node_modules/electron/dist/LICENSES.chromium.html",
+      "to": "licenses/Electron-Chromium-LICENSES.html"
     }
   ],
   "files": [
