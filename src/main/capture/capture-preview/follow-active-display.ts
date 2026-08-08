@@ -64,7 +64,11 @@ function handleDaemonEvent(event: string): void {
       restartDwellTimer();
       return;
     case 'system:ready':
-      if (!monitoring) return;
+      if (!monitoring) {
+        syncFollowMonitor();
+        return;
+      }
+
       startActiveDisplay();
       restartDwellTimer();
       return;

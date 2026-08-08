@@ -27,12 +27,23 @@ class ActiveDisplayModule: Module {
                 return
             }
 
-            self.lastDisplayId = self.currentDisplayId()
-            self.monitor = NSEvent.addGlobalMonitorForEvents(
+            let monitor = NSEvent.addGlobalMonitorForEvents(
                 matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
             ) { [weak self] _ in
                 self?.handleMouseMoved()
             }
+
+            guard let monitor = monitor else {
+                self.respondError(
+                    id: requestId,
+                    code: "MONITOR_FAILED",
+                    message: "Could not install the global mouse monitor"
+                )
+                return
+            }
+
+            self.lastDisplayId = self.currentDisplayId()
+            self.monitor = monitor
 
             self.respond(id: requestId, result: ["monitoring": true])
         }

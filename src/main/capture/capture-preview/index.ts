@@ -68,8 +68,10 @@ function getDisplayLabel(display: Electron.Display, index: number): string {
   return `Display ${index + 1}${suffix}`;
 }
 
-function getPreviewPosition(index: number): { x: number; y: number } {
-  const display = getSelectedPreviewDisplay();
+function getPreviewPosition(
+  index: number,
+  display: Electron.Display
+): { x: number; y: number } {
   const { x: displayX, y: displayY, height } = display.workArea;
 
   const x = displayX + MARGIN_LEFT;
@@ -141,15 +143,15 @@ function getStackedPreviews(): PreviewWindowData[] {
 }
 
 function repositionAllWindows(): void {
-  const targetDisplayId = getSelectedPreviewDisplay().id;
+  const targetDisplay = getSelectedPreviewDisplay();
 
   getStackedPreviews().forEach((data, index) => {
-    const position = getPreviewPosition(index);
+    const position = getPreviewPosition(index, targetDisplay);
     const currentDisplayId = screen.getDisplayMatching(
       data.window.getBounds()
     ).id;
 
-    if (currentDisplayId !== targetDisplayId) {
+    if (currentDisplayId !== targetDisplay.id) {
       moveWindowInstantly(data.window, position);
       return;
     }
@@ -171,7 +173,7 @@ function handlePreviewMoved(previewData: PreviewWindowData): void {
   if (previewData.detached) return;
 
   const stackedIndex = getStackedPreviews().indexOf(previewData);
-  const slot = getPreviewPosition(stackedIndex);
+  const slot = getPreviewPosition(stackedIndex, getSelectedPreviewDisplay());
   const [x, y] = window.getPosition();
 
   if (x === slot.x && y === slot.y) return;
@@ -183,7 +185,7 @@ function handlePreviewMoved(previewData: PreviewWindowData): void {
   }
 
   syncFollowMonitor();
-  repositionAllWindows();
+  relocatePreviews();
 }
 
 function removePreviewWindow(webContentsId: number): void {
@@ -225,7 +227,7 @@ export async function showCapturePreview(
   const thumbnailResult = await getThumbnail(filePath, contentType);
 
   const newIndex = getStackedPreviews().length;
-  const { x, y } = getPreviewPosition(newIndex);
+  const { x, y } = getPreviewPosition(newIndex, getSelectedPreviewDisplay());
 
   const targetBounds = { x, y, width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT };
   const initialBounds = getInitialBounds(targetBounds);
@@ -296,7 +298,7 @@ export async function showCapturePreview(
 
     if (stackedIndex === -1) return;
 
-    const slot = getPreviewPosition(stackedIndex);
+    const slot = getPreviewPosition(stackedIndex, getSelectedPreviewDisplay());
 
     previewWindow.showInactive();
     animateWindowIn(previewWindow, {

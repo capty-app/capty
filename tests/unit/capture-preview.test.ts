@@ -1,38 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  CURSOR_ON_ONE,
+  CURSOR_ON_TWO,
+  DISPLAY_ONE,
+  DISPLAY_TWO,
+  createDaemonMock,
+  displayNearestPoint,
+  type MockPoint,
+} from '../helpers/preview-fixtures';
 
-interface MockDisplay {
-  id: number;
-  workArea: { x: number; y: number; width: number; height: number };
-}
-
-const DISPLAY_ONE: MockDisplay = {
-  id: 1,
-  workArea: { x: 0, y: 0, width: 1920, height: 1080 },
-};
-
-const DISPLAY_TWO: MockDisplay = {
-  id: 2,
-  workArea: { x: 1920, y: 0, width: 1920, height: 1080 },
-};
-
-const CURSOR_ON_ONE = { x: 10, y: 10 };
-const CURSOR_ON_TWO = { x: 2500, y: 10 };
+const displays = [DISPLAY_ONE, DISPLAY_TWO];
 
 let cursorPoint = { ...CURSOR_ON_ONE };
+let readCursorPoint: () => MockPoint = () => cursorPoint;
 
 const browserWindows: MockBrowserWindow[] = [];
 const ipcOn: Record<string, (...a: unknown[]) => unknown> = {};
 const ipcHandle: Record<string, (...a: unknown[]) => unknown> = {};
-
-function displayNearestPoint(point: { x: number; y: number }): MockDisplay {
-  return (
-    [DISPLAY_ONE, DISPLAY_TWO].find(
-      display =>
-        point.x >= display.workArea.x &&
-        point.x < display.workArea.x + display.workArea.width
-    ) ?? DISPLAY_ONE
-  );
-}
+const screenListeners: Record<string, (...a: unknown[]) => unknown> = {};
 
 const mockGetConfig = vi.fn();
 const mockUpdateConfig = vi.fn();
@@ -56,12 +41,14 @@ const mockMoveWindowInstantly = vi.fn(
     window.setPosition(position.x, position.y);
   }
 );
-const mockGetDisplayMatching = vi.fn((bounds: { x: number; y: number }) =>
-  displayNearestPoint(bounds)
+const mockGetDisplayMatching = vi.fn((bounds: MockPoint) =>
+  displayNearestPoint(bounds, displays)
 );
-const mockDaemonCall = vi.fn(() => Promise.resolve(undefined));
-const mockDaemonOnEvent = vi.fn();
-const mockDaemonOffEvent = vi.fn();
+const {
+  call: mockDaemonCall,
+  onEvent: mockDaemonOnEvent,
+  offEvent: mockDaemonOffEvent,
+} = createDaemonMock();
 
 class MockBrowserWindow {
   static webContentsCounter = 0;
@@ -132,13 +119,14 @@ vi.mock('electron', () => ({
   },
   screen: {
     getPrimaryDisplay: () => DISPLAY_ONE,
-    getAllDisplays: () => [DISPLAY_ONE, DISPLAY_TWO],
-    getDisplayMatching: (bounds: { x: number; y: number }) =>
-      mockGetDisplayMatching(bounds),
-    getCursorScreenPoint: () => cursorPoint,
-    getDisplayNearestPoint: (point: { x: number; y: number }) =>
-      displayNearestPoint(point),
-    on: vi.fn(),
+    getAllDisplays: () => displays,
+    getDisplayMatching: (bounds: MockPoint) => mockGetDisplayMatching(bounds),
+    getCursorScreenPoint: () => readCursorPoint(),
+    getDisplayNearestPoint: (point: MockPoint) =>
+      displayNearestPoint(point, displays),
+    on: (event: string, handler: (...a: unknown[]) => unknown) => {
+      screenListeners[event] = handler;
+    },
   },
   clipboard: {
     writeImage: (...a: unknown[]) => mockClipboardWriteImage(...a),
@@ -244,12 +232,15 @@ describe('capture-preview index', () => {
     MockBrowserWindow.webContentsCounter = 0;
     Object.keys(ipcOn).forEach(k => delete ipcOn[k]);
     Object.keys(ipcHandle).forEach(k => delete ipcHandle[k]);
+    Object.keys(screenListeners).forEach(k => delete screenListeners[k]);
     mockIsWindowAnimating.mockReturnValue(false);
     cursorPoint = { ...CURSOR_ON_ONE };
+    readCursorPoint = () => cursorPoint;
     mockGetConfig.mockReturnValue({
       preview: { displayId: DISPLAY_ONE.id, followActiveDisplay: false },
     });
     mockGetThumbnail.mockResolvedValue({ base64: 'abc', cached: false });
+    mockDaemonCall.mockImplementation(() => Promise.resolve(undefined));
   });
 
   it('showCapturePreview creates a preview window', async () => {
@@ -357,7 +348,10 @@ describe('capture-preview index', () => {
     });
 
     it('move-to-display updates config and reposition', async () => {
+      setPreviewConfig(true, DISPLAY_TWO.id);
+
       const result = await ipcHandle['capture-preview:move-to-display']({}, 1);
+
       expect(mockUpdateConfig).toHaveBeenCalledWith({
         preview: { displayId: 1, followActiveDisplay: false },
       });
@@ -446,6 +440,75 @@ describe('capture-preview index', () => {
           call => call[0] === browserWindows[1]
         )
       ).toBe(false);
+    });
+
+    it('broadcasts the display list after a detach', async () => {
+      setPreviewConfig(false, DISPLAY_ONE.id);
+      await showPreviews(2);
+      browserWindows[0].webContents.send.mockClear();
+
+      browserWindows[1].setPosition(2500, 500);
+      fireMoved(browserWindows[1]);
+
+      expect(browserWindows[0].webContents.send).toHaveBeenCalledWith(
+        'capture-preview:displays-changed',
+        expect.any(Array)
+      );
+    });
+
+    it('keeps a preview stacked when it lands on its stacked slot after an earlier detach', async () => {
+      setPreviewConfig(true);
+      await showPreviews(3);
+
+      browserWindows[0].setPosition(500, 500);
+      fireMoved(browserWindows[0]);
+      mockDaemonCall.mockClear();
+
+      browserWindows[1].setPosition(24, 916);
+      fireMoved(browserWindows[1]);
+
+      expect(mockDaemonCall).not.toHaveBeenCalledWith('active-display', 'stop');
+
+      mockAnimateWindowMove.mockClear();
+      browserWindows[2].close();
+
+      expect(mockAnimateWindowMove).toHaveBeenCalledWith(browserWindows[1], {
+        x: 24,
+        y: 916,
+      });
+    });
+
+    it('resolves a single display for a whole reposition pass', async () => {
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      mockDaemonCall.mockImplementation(() =>
+        Promise.reject(new Error('daemon down'))
+      );
+      setPreviewConfig(true, DISPLAY_ONE.id);
+      await showPreviews(3);
+      await Promise.resolve();
+
+      mockAnimateWindowMove.mockClear();
+      mockMoveWindowInstantly.mockClear();
+
+      let reads = 0;
+      readCursorPoint = () => {
+        reads += 1;
+        return reads === 1 ? CURSOR_ON_ONE : CURSOR_ON_TWO;
+      };
+
+      screenListeners['display-metrics-changed']();
+
+      expect(reads).toBeGreaterThan(0);
+      expect(mockMoveWindowInstantly).not.toHaveBeenCalled();
+      expect(mockAnimateWindowMove.mock.calls.map(call => call[1])).toEqual([
+        { x: 24, y: 916 },
+        { x: 24, y: 764 },
+        { x: 24, y: 612 },
+      ]);
+
+      consoleError.mockRestore();
     });
 
     it('ignores a moved event fired while the window is animating', async () => {

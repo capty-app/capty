@@ -1,50 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-interface MockDisplay {
-  id: number;
-  workArea: { x: number; y: number; width: number; height: number };
-}
-
-const DISPLAY_ONE: MockDisplay = {
-  id: 1,
-  workArea: { x: 0, y: 0, width: 1920, height: 1080 },
-};
-
-const DISPLAY_TWO: MockDisplay = {
-  id: 2,
-  workArea: { x: 1920, y: 0, width: 1920, height: 1080 },
-};
-
-const CURSOR_ON_ONE = { x: 100, y: 10 };
-const CURSOR_ON_TWO = { x: 2500, y: 10 };
+import {
+  CURSOR_ON_ONE,
+  CURSOR_ON_TWO,
+  DISPLAY_ONE,
+  DISPLAY_TWO,
+  createDaemonMock,
+  displayNearestPoint,
+  type MockDisplay,
+  type MockPoint,
+} from '../helpers/preview-fixtures';
 
 let displays: MockDisplay[] = [DISPLAY_ONE, DISPLAY_TWO];
 let cursorPoint = { ...CURSOR_ON_ONE };
 let stackedCount = 0;
 
-const mockDaemonCall = vi.fn(() => Promise.resolve(undefined));
-const mockDaemonOnEvent = vi.fn();
-const mockDaemonOffEvent = vi.fn();
+const {
+  call: mockDaemonCall,
+  onEvent: mockDaemonOnEvent,
+  offEvent: mockDaemonOffEvent,
+} = createDaemonMock();
 const mockGetConfig = vi.fn();
 const mockSetPreviewConfigListener = vi.fn();
 const mockOnRelocate = vi.fn();
-
-function displayNearestPoint(point: { x: number; y: number }): MockDisplay {
-  return (
-    displays.find(
-      display =>
-        point.x >= display.workArea.x &&
-        point.x < display.workArea.x + display.workArea.width
-    ) ?? displays[0]
-  );
-}
 
 vi.mock('electron', () => ({
   screen: {
     getAllDisplays: () => displays,
     getCursorScreenPoint: () => cursorPoint,
-    getDisplayNearestPoint: (point: { x: number; y: number }) =>
-      displayNearestPoint(point),
+    getDisplayNearestPoint: (point: MockPoint) =>
+      displayNearestPoint(point, displays),
   },
 }));
 
@@ -274,6 +258,36 @@ describe('follow-active-display', () => {
     getDaemonEventHandler()('system:ready');
 
     expect(mockDaemonCall).toHaveBeenCalledWith('active-display', 'start');
+  });
+
+  it('re-issues start when the daemon becomes ready after a failed start', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    stackedCount = 1;
+    const controller = await initController();
+    mockDaemonCall.mockImplementationOnce(() =>
+      Promise.reject(new Error('start failed'))
+    );
+
+    controller.syncFollowMonitor();
+    await vi.advanceTimersByTimeAsync(0);
+    mockDaemonCall.mockClear();
+
+    getDaemonEventHandler()('system:ready');
+
+    expect(mockDaemonCall).toHaveBeenCalledWith('active-display', 'start');
+    expect(controller.getFollowDisplay()).toEqual(DISPLAY_ONE);
+
+    consoleError.mockRestore();
+  });
+
+  it('does not start the monitor on daemon ready without stacked previews', async () => {
+    await initController();
+
+    getDaemonEventHandler()('system:ready');
+
+    expect(mockDaemonCall).not.toHaveBeenCalled();
   });
 
   it('re-resolves the cursor display after the daemon becomes ready again', async () => {
