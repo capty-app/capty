@@ -107,6 +107,16 @@ describe('settings IPC handlers', () => {
       const result = ipcHandle['settings:reset']();
       expect(result).toBeDefined();
     });
+
+    it('notifies the preview listener on reset', async () => {
+      const m = await loadAndInit();
+      const listener = vi.fn();
+      m.setPreviewConfigListener(listener);
+
+      const result = ipcHandle['settings:reset']();
+
+      expect(listener).toHaveBeenCalledWith(result);
+    });
   });
 
   describe('app:getVersion', () => {

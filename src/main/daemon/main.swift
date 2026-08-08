@@ -20,6 +20,7 @@ router.register(TimerControlModule())
 router.register(CameraPreviewModule())
 router.register(PrintModule())
 router.register(ScrollCaptureModule())
+router.register(ActiveDisplayModule())
 if #available(macOS 12.3, *) {
     router.register(ScreenRecorderModule())
 }

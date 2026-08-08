@@ -1,4 +1,9 @@
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, Rectangle } from 'electron';
+
+interface WindowAnimation {
+  token: symbol;
+  finalBounds?: Rectangle;
+}
 
 interface AnimationOptions {
   steps?: number;
@@ -22,6 +27,38 @@ const DEFAULT_MOVE_OPTIONS: Required<MoveAnimationOptions> = {
   duration: 120,
 };
 
+const activeAnimations = new WeakMap<BrowserWindow, WindowAnimation>();
+
+function beginAnimation(
+  window: BrowserWindow,
+  finalBounds?: Rectangle
+): symbol {
+  const previous = activeAnimations.get(window);
+
+  if (previous?.finalBounds && !window.isDestroyed()) {
+    window.setBounds(previous.finalBounds);
+  }
+
+  const token = Symbol('window-animation');
+  activeAnimations.set(window, { token, finalBounds });
+
+  return token;
+}
+
+function ownsAnimation(window: BrowserWindow, token: symbol): boolean {
+  return activeAnimations.get(window)?.token === token;
+}
+
+function endAnimation(window: BrowserWindow, token: symbol): void {
+  if (!ownsAnimation(window, token)) return;
+
+  activeAnimations.delete(window);
+}
+
+export function isWindowAnimating(window: BrowserWindow): boolean {
+  return activeAnimations.has(window);
+}
+
 export function animateWindowIn(
   window: BrowserWindow,
   targetBounds: { x: number; y: number; width: number; height: number },
@@ -30,11 +67,17 @@ export function animateWindowIn(
   const { steps, duration, initialScale } = { ...DEFAULT_OPTIONS, ...options };
   const stepDuration = duration / steps;
   const scaleStep = (1 - initialScale) / steps;
+  const token = beginAnimation(window, targetBounds);
 
   let currentStep = 0;
 
   const animate = () => {
-    if (window.isDestroyed()) return;
+    if (!ownsAnimation(window, token)) return;
+
+    if (window.isDestroyed()) {
+      endAnimation(window, token);
+      return;
+    }
 
     currentStep++;
     const scale = initialScale + scaleStep * currentStep;
@@ -48,7 +91,10 @@ export function animateWindowIn(
 
     if (currentStep < steps) {
       setTimeout(animate, stepDuration);
+      return;
     }
+
+    endAnimation(window, token);
   };
 
   animate();
@@ -61,17 +107,26 @@ export function animateWindowMove(
 ): void {
   const { steps, duration } = { ...DEFAULT_MOVE_OPTIONS, ...options };
   const stepDuration = duration / steps;
+  const token = beginAnimation(window);
 
   const currentBounds = window.getBounds();
   const deltaX = targetPosition.x - currentBounds.x;
   const deltaY = targetPosition.y - currentBounds.y;
 
-  if (deltaX === 0 && deltaY === 0) return;
+  if (deltaX === 0 && deltaY === 0) {
+    endAnimation(window, token);
+    return;
+  }
 
   let currentStep = 0;
 
   const animate = () => {
-    if (window.isDestroyed()) return;
+    if (!ownsAnimation(window, token)) return;
+
+    if (window.isDestroyed()) {
+      endAnimation(window, token);
+      return;
+    }
 
     currentStep++;
     const progress = currentStep / steps;
@@ -84,10 +139,26 @@ export function animateWindowMove(
 
     if (currentStep < steps) {
       setTimeout(animate, stepDuration);
+      return;
     }
+
+    endAnimation(window, token);
   };
 
   animate();
+}
+
+export function moveWindowInstantly(
+  window: BrowserWindow,
+  targetPosition: { x: number; y: number }
+): void {
+  const token = beginAnimation(window);
+
+  endAnimation(window, token);
+
+  if (window.isDestroyed()) return;
+
+  window.setPosition(targetPosition.x, targetPosition.y);
 }
 
 export function getInitialBounds(
