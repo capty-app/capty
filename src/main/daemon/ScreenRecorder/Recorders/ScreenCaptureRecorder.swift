@@ -141,15 +141,13 @@ class ScreenCaptureRecorder: NSObject, SCStreamDelegate, AVCaptureAudioDataOutpu
         streamConfig.width = videoWidth
         streamConfig.height = videoHeight
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(config.frameRate))
-        streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
+        ScreenRecordingColorConfiguration.apply(to: streamConfig)
         streamConfig.showsCursor = false
         streamConfig.queueDepth = 8
 
         if #available(macOS 14.0, *) {
             streamConfig.captureResolution = .best
         }
-
-        streamConfig.colorSpaceName = CGColorSpace.sRGB
 
         if #available(macOS 13.0, *) {
             streamConfig.capturesAudio = config.includeAudio
@@ -170,6 +168,7 @@ class ScreenCaptureRecorder: NSObject, SCStreamDelegate, AVCaptureAudioDataOutpu
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: videoWidth,
             AVVideoHeightKey: videoHeight,
+            AVVideoColorPropertiesKey: ScreenRecordingColorConfiguration.videoColorProperties,
             AVVideoCompressionPropertiesKey: [
                 AVVideoAverageBitRateKey: bitrate,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
@@ -181,11 +180,10 @@ class ScreenCaptureRecorder: NSObject, SCStreamDelegate, AVCaptureAudioDataOutpu
         videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput?.expectsMediaDataInRealTime = true
 
-        let sourcePixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: videoWidth,
-            kCVPixelBufferHeightKey as String: videoHeight,
-        ]
+        let sourcePixelBufferAttributes = ScreenRecordingColorConfiguration.pixelBufferAttributes(
+            width: videoWidth,
+            height: videoHeight
+        )
 
         pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput!,
