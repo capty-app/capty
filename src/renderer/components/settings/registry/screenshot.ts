@@ -39,6 +39,19 @@ export const SCREENSHOT_ITEMS: SettingsItem[] = [
     }),
   },
   {
+    id: 'screenshot.previewFollowActiveDisplay',
+    category: 'screenshot',
+    section: 'Capture Mode',
+    type: 'switch',
+    label: 'Previews follow active display',
+    description: 'Move capture previews to the display your cursor is on',
+    keywords: ['preview', 'display', 'monitor', 'follow', 'cursor'],
+    getValue: s => s.preview.followActiveDisplay,
+    setValue: (s, v) => ({
+      preview: { ...s.preview, followActiveDisplay: v },
+    }),
+  },
+  {
     id: 'screenshot.hideDesktopIcons',
     category: 'screenshot',
     section: 'Capture Mode',

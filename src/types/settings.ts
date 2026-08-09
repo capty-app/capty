@@ -33,6 +33,7 @@ export const DEFAULT_SAVE_LOCATIONS_CONFIG: SaveLocationsConfig = {
 
 export interface PreviewConfig {
   displayId: number | null;
+  followActiveDisplay: boolean;
 }
 
 export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
@@ -43,6 +44,7 @@ export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
 
 export const DEFAULT_PREVIEW_CONFIG: PreviewConfig = {
   displayId: null,
+  followActiveDisplay: true,
 };
 
 export type ScreenshotFormat = 'png' | 'jpeg';

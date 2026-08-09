@@ -35,6 +35,13 @@ const CONFIG_FILE = getConfigFilePath();
 
 let currentConfig: SettingsConfig = { ...DEFAULT_SETTINGS };
 let configLoaded = false;
+let previewConfigListener: ((config: SettingsConfig) => void) | null = null;
+
+export function setPreviewConfigListener(
+  listener: (config: SettingsConfig) => void
+): void {
+  previewConfigListener = listener;
+}
 
 function migrateWallpaperConfig(
   savedWallpaper?: SettingsConfig['wallpaper']
@@ -340,6 +347,11 @@ export function updateConfig(updates: Partial<SettingsConfig>): SettingsConfig {
   }
 
   saveConfig(currentConfig);
+
+  if (updates.preview !== undefined) {
+    previewConfigListener?.(currentConfig);
+  }
+
   return currentConfig;
 }
 
@@ -399,6 +411,7 @@ export function init() {
     currentConfig = { ...DEFAULT_SETTINGS };
     saveConfig(currentConfig);
     applyLoginItemSetting();
+    previewConfigListener?.(currentConfig);
     return currentConfig;
   });
 

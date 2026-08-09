@@ -17,9 +17,16 @@ import { deleteVideo } from '@/main/capture/video/delete-video';
 import * as settings from '@/main/settings';
 import { registerPreviewExportIpc } from './video-export';
 import {
+  getFollowDisplay,
+  initFollowActiveDisplay,
+  syncFollowMonitor,
+} from './follow-active-display';
+import {
   animateWindowIn,
   animateWindowMove,
   getInitialBounds,
+  isWindowAnimating,
+  moveWindowInstantly,
 } from '@/main/utils/window-animation';
 import type { ContentType, PreviewDisplayInfo } from '@/types/capture-preview';
 
@@ -28,6 +35,7 @@ interface PreviewWindowData {
   filePath: string;
   contentType: ContentType;
   historyId?: string;
+  detached: boolean;
 }
 
 const previewWindows: PreviewWindowData[] = [];
@@ -40,6 +48,10 @@ const MARGIN_LEFT = 24;
 const WINDOW_GAP = 12;
 
 function getSelectedPreviewDisplay(): Electron.Display {
+  const followDisplay = getFollowDisplay();
+
+  if (followDisplay) return followDisplay;
+
   const displays = screen.getAllDisplays();
   const selectedDisplayId = settings.getConfig().preview.displayId;
   const selectedDisplay = displays.find(
@@ -56,8 +68,10 @@ function getDisplayLabel(display: Electron.Display, index: number): string {
   return `Display ${index + 1}${suffix}`;
 }
 
-function getPreviewPosition(index: number): { x: number; y: number } {
-  const display = getSelectedPreviewDisplay();
+function getPreviewPosition(
+  index: number,
+  display: Electron.Display
+): { x: number; y: number } {
   const { x: displayX, y: displayY, height } = display.workArea;
 
   const x = displayX + MARGIN_LEFT;
@@ -89,7 +103,9 @@ function movePreviewsToDisplay(displayId: number): PreviewDisplayInfo[] {
     return getPreviewDisplays();
   }
 
-  settings.updateConfig({ preview: { displayId } });
+  settings.updateConfig({
+    preview: { followActiveDisplay: false, displayId },
+  });
   repositionAllWindows();
 
   return getPreviewDisplays();
@@ -102,7 +118,9 @@ function persistPreviewDisplayForWindow(window: BrowserWindow): void {
 
   if (settings.getConfig().preview.displayId === display.id) return;
 
-  settings.updateConfig({ preview: { displayId: display.id } });
+  settings.updateConfig({
+    preview: { ...settings.getConfig().preview, displayId: display.id },
+  });
 }
 
 function broadcastDisplaysChanged(): void {
@@ -118,13 +136,56 @@ function broadcastDisplaysChanged(): void {
   });
 }
 
+function getStackedPreviews(): PreviewWindowData[] {
+  return previewWindows.filter(
+    data => !data.detached && !data.window.isDestroyed()
+  );
+}
+
 function repositionAllWindows(): void {
-  previewWindows.forEach((data, index) => {
-    if (!data.window.isDestroyed()) {
-      const { x, y } = getPreviewPosition(index);
-      animateWindowMove(data.window, { x, y });
+  const targetDisplay = getSelectedPreviewDisplay();
+
+  getStackedPreviews().forEach((data, index) => {
+    const position = getPreviewPosition(index, targetDisplay);
+    const currentDisplayId = screen.getDisplayMatching(
+      data.window.getBounds()
+    ).id;
+
+    if (currentDisplayId !== targetDisplay.id) {
+      moveWindowInstantly(data.window, position);
+      return;
     }
+
+    animateWindowMove(data.window, position);
   });
+}
+
+function relocatePreviews(): void {
+  repositionAllWindows();
+  broadcastDisplaysChanged();
+}
+
+function handlePreviewMoved(previewData: PreviewWindowData): void {
+  const { window } = previewData;
+
+  if (window.isDestroyed()) return;
+  if (isWindowAnimating(window)) return;
+  if (previewData.detached) return;
+
+  const stackedIndex = getStackedPreviews().indexOf(previewData);
+  const slot = getPreviewPosition(stackedIndex, getSelectedPreviewDisplay());
+  const [x, y] = window.getPosition();
+
+  if (x === slot.x && y === slot.y) return;
+
+  previewData.detached = true;
+
+  if (!settings.getConfig().preview.followActiveDisplay) {
+    persistPreviewDisplayForWindow(window);
+  }
+
+  syncFollowMonitor();
+  relocatePreviews();
 }
 
 function removePreviewWindow(webContentsId: number): void {
@@ -135,6 +196,7 @@ function removePreviewWindow(webContentsId: number): void {
 
   if (index !== -1) {
     previewWindows.splice(index, 1);
+    syncFollowMonitor();
     repositionAllWindows();
   }
 }
@@ -164,8 +226,8 @@ export async function showCapturePreview(
 
   const thumbnailResult = await getThumbnail(filePath, contentType);
 
-  const newIndex = previewWindows.length;
-  const { x, y } = getPreviewPosition(newIndex);
+  const newIndex = getStackedPreviews().length;
+  const { x, y } = getPreviewPosition(newIndex, getSelectedPreviewDisplay());
 
   const targetBounds = { x, y, width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT };
   const initialBounds = getInitialBounds(targetBounds);
@@ -207,9 +269,11 @@ export async function showCapturePreview(
     filePath,
     contentType,
     historyId,
+    detached: false,
   };
 
   previewWindows.push(previewData);
+  syncFollowMonitor();
 
   if (devServerUrl) {
     previewWindow.loadURL(devServerUrl);
@@ -230,12 +294,22 @@ export async function showCapturePreview(
   });
 
   previewWindow.once('ready-to-show', () => {
+    const stackedIndex = getStackedPreviews().indexOf(previewData);
+
+    if (stackedIndex === -1) return;
+
+    const slot = getPreviewPosition(stackedIndex, getSelectedPreviewDisplay());
+
     previewWindow.showInactive();
-    animateWindowIn(previewWindow, targetBounds);
+    animateWindowIn(previewWindow, {
+      ...slot,
+      width: PREVIEW_WIDTH,
+      height: PREVIEW_HEIGHT,
+    });
   });
 
   previewWindow.on('moved', () => {
-    persistPreviewDisplayForWindow(previewWindow);
+    handlePreviewMoved(previewData);
   });
 
   previewWindow.on('closed', () => {
@@ -254,6 +328,11 @@ function getPreviewDataByWebContentsId(
 
 export function registerCapturePreviewIpc(): void {
   registerPreviewExportIpc();
+
+  initFollowActiveDisplay({
+    getStackedCount: () => getStackedPreviews().length,
+    onRelocate: relocatePreviews,
+  });
 
   ipcMain.on('capture-preview:close', event => {
     const data = getPreviewDataByWebContentsId(event.sender.id);
@@ -339,14 +418,9 @@ export function registerCapturePreviewIpc(): void {
   );
 
   app.whenReady().then(() => {
-    const handleDisplaysChanged = () => {
-      repositionAllWindows();
-      broadcastDisplaysChanged();
-    };
-
-    screen.on('display-added', handleDisplaysChanged);
-    screen.on('display-removed', handleDisplaysChanged);
-    screen.on('display-metrics-changed', handleDisplaysChanged);
+    screen.on('display-added', relocatePreviews);
+    screen.on('display-removed', relocatePreviews);
+    screen.on('display-metrics-changed', relocatePreviews);
   });
 }
 
