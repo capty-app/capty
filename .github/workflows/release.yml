@@ -41,6 +41,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install native build prerequisites
+        run: |
+          if ! command -v nasm >/dev/null 2>&1; then
+            brew install nasm
+          fi
+
+      - name: Prepare native binaries
+        run: bun run native:prepare
+
       - name: Update package.json version
         run: |
           VERSION="${{ inputs.version }}"
@@ -153,10 +162,17 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           if [ "${{ inputs.notarize }}" = "true" ]; then
-            bun run build-mac
+            bun run build-mac:prepared
           else
-            bun run build-mac:local
+            bun run build-mac:prepared:local
           fi
+
+      - name: Verify packaged native binaries
+        run: |
+          ./scripts/verify-native-binaries.sh \
+            capty-daemon "release/${{ inputs.version }}/mac-universal/Capty.app/Contents/Resources/daemon/capty-daemon" \
+            FFmpeg "release/${{ inputs.version }}/mac-universal/Capty.app/Contents/Resources/binaries/ffmpeg/ffmpeg" \
+            Whisper "release/${{ inputs.version }}/mac-universal/Capty.app/Contents/Resources/binaries/whisper/whisper"
 
       - name: Create GitHub Release
         id: create_release
