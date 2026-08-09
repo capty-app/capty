@@ -23,6 +23,7 @@ set -e
 # Configuration
 FFMPEG_VERSION="7.1"
 FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+FFMPEG_SHA256="40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6"
 BUILD_DIR="/tmp/ffmpeg-build-$$"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -85,7 +86,8 @@ download_ffmpeg() {
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     
-    curl -L -o ffmpeg.tar.xz "$FFMPEG_URL"
+    curl --fail --show-error --location --output ffmpeg.tar.xz "$FFMPEG_URL"
+    printf '%s  %s\n' "$FFMPEG_SHA256" ffmpeg.tar.xz | shasum -a 256 --check -
     tar xf ffmpeg.tar.xz
     cd "ffmpeg-${FFMPEG_VERSION}"
 }
@@ -184,7 +186,7 @@ build_for_arch() {
         --enable-filter=aselect
     
     # Build
-    make -j$(sysctl -n hw.ncpu)
+    make -j"$(sysctl -n hw.ncpu)"
     make install
     
     log_info "Build for $arch complete."

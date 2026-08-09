@@ -196,6 +196,33 @@ describe('Path Utilities', () => {
   });
 
   describe('getNativeBinaryPath', () => {
+    it('should use the external resources path in packaged apps', async () => {
+      const originalResourcesPath = process.resourcesPath;
+      Object.defineProperty(process, 'resourcesPath', {
+        value: '/mock/resources',
+        writable: true,
+        configurable: true,
+      });
+      mockApp.isPackaged = true;
+      mockApp.getAppPath.mockReturnValue('/mock/resources/app.asar');
+      mockExistsSync.mockReturnValue(false);
+
+      const { getNativeBinaryPath } = await import('@/main/utils/paths');
+
+      expect(getNativeBinaryPath('capty-daemon')).toBe(
+        '/mock/resources/daemon/capty-daemon'
+      );
+      expect(getNativeBinaryPath('ffmpeg')).toBe(
+        '/mock/resources/binaries/ffmpeg/ffmpeg'
+      );
+
+      Object.defineProperty(process, 'resourcesPath', {
+        value: originalResourcesPath,
+        writable: true,
+        configurable: true,
+      });
+    });
+
     it('should return dev path when it exists', async () => {
       mockExistsSync.mockImplementation((p: string) => {
         if (p === '/mock/app/src/main/binaries/test-binary/test-binary')

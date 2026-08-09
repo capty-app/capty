@@ -19,13 +19,12 @@
 #   CAPTY_RELEASE_SECRET        - Secret for capty.app API
 #
 # Usage:
-#   ./scripts/release.sh <version> [--no-notarize] [--skip-upload] [--force-build]
+#   ./scripts/release.sh <version> [--no-notarize] [--skip-upload]
 #
 # Examples:
 #   ./scripts/release.sh 1.1.0
 #   ./scripts/release.sh 1.1.0 --no-notarize
 #   ./scripts/release.sh 1.1.0 --skip-upload
-#   ./scripts/release.sh 1.1.0 --force-build    # Re-build even if artifacts exist
 
 set -e
 
@@ -47,7 +46,6 @@ cd "$PROJECT_ROOT"
 VERSION=""
 NOTARIZE=true
 SKIP_UPLOAD=false
-FORCE_BUILD=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -57,10 +55,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-upload)
       SKIP_UPLOAD=true
-      shift
-      ;;
-    --force-build)
-      FORCE_BUILD=true
       shift
       ;;
     *)
@@ -100,7 +94,7 @@ fi
 # Validate version format
 if [[ -z "$VERSION" ]]; then
   log_error "Version is required"
-  echo "Usage: $0 <version> [--no-notarize] [--skip-upload] [--force-build]"
+  echo "Usage: $0 <version> [--no-notarize] [--skip-upload]"
   echo "Example: $0 1.1.0"
   exit 1
 fi
@@ -116,12 +110,12 @@ echo ""
 # Check required environment variables for notarization
 if [[ "$NOTARIZE" == "true" ]]; then
   log_info "Checking notarization requirements..."
-  
+
   MISSING_VARS=()
   [[ -z "$APPLE_ID" ]] && MISSING_VARS+=("APPLE_ID")
   [[ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]] && MISSING_VARS+=("APPLE_APP_SPECIFIC_PASSWORD")
   [[ -z "$APPLE_TEAM_ID" ]] && MISSING_VARS+=("APPLE_TEAM_ID")
-  
+
   if [[ ${#MISSING_VARS[@]} -gt 0 ]]; then
     log_error "Missing required environment variables for notarization:"
     for var in "${MISSING_VARS[@]}"; do
@@ -132,7 +126,7 @@ if [[ "$NOTARIZE" == "true" ]]; then
     echo "Or run with --no-notarize to skip notarization."
     exit 1
   fi
-  
+
   log_success "Notarization credentials found"
 fi
 
@@ -149,17 +143,6 @@ DMG_PATH="release/${VERSION}/Capty-${VERSION}-universal.dmg"
 ZIP_PATH="release/${VERSION}/Capty-${VERSION}-universal-mac.zip"
 DMG_NAME="Capty-${VERSION}-universal.dmg"
 ZIP_NAME="Capty-${VERSION}-universal-mac.zip"
-
-# Check if build artifacts already exist
-SKIP_BUILD=false
-if [[ -f "$DMG_PATH" ]] && [[ -f "$ZIP_PATH" ]] && [[ "$FORCE_BUILD" == "false" ]]; then
-  log_info "Build artifacts already exist for v$VERSION:"
-  echo "  - $DMG_PATH"
-  echo "  - $ZIP_PATH"
-  log_warning "Skipping build step (use --force-build to rebuild)"
-  SKIP_BUILD=true
-  echo ""
-fi
 
 # Step 1: Install dependencies
 log_info "Step 1: Installing dependencies..."
@@ -288,84 +271,78 @@ log_success "Internal release notes generated:"
 cat internal_release_notes.txt
 echo ""
 
-# Step 6 & 7: Setup certificates and build (skip if artifacts exist)
-if [[ "$SKIP_BUILD" == "false" ]]; then
-  # Step 6: Setup macOS certificates (only needed in CI with MACOS_CERTIFICATE)
-  # On local Mac, certificates are already in the system keychain
-  if [[ -n "$MACOS_CERTIFICATE" ]]; then
-    log_info "Step 6: Setting up macOS certificates from environment..."
-    
-    KEYCHAIN_NAME="build.keychain"
-    KEYCHAIN_PWD="${MACOS_KEYCHAIN_PWD:-$(openssl rand -base64 32)}"
-    
-    # Decode and import certificate
-    echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
-    
-    # Delete existing keychain if it exists
-    security delete-keychain "$KEYCHAIN_NAME" 2>/dev/null || true
-    
-    # Create and configure keychain
-    security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
-    security default-keychain -s "$KEYCHAIN_NAME"
-    security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
-    security import certificate.p12 -k "$KEYCHAIN_NAME" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
-    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
-    
-    # Cleanup certificate file
-    rm certificate.p12
-    
-    log_success "Certificates configured from environment"
-    echo ""
-  else
-    log_info "Step 6: Using certificates from system keychain (local Mac)"
-    echo ""
-  fi
+# Step 6 & 7: Setup certificates and build
+# Step 6: Setup macOS certificates (only needed in CI with MACOS_CERTIFICATE)
+# On local Mac, certificates are already in the system keychain
+if [[ -n "$MACOS_CERTIFICATE" ]]; then
+  log_info "Step 6: Setting up macOS certificates from environment..."
 
-  # Step 7: Build macOS app
-  log_info "Step 7: Building macOS app..."
-  BUILD_LOG=$(mktemp)
+  KEYCHAIN_NAME="build.keychain"
+  KEYCHAIN_PWD="${MACOS_KEYCHAIN_PWD:-$(openssl rand -base64 32)}"
 
-  if [[ "$NOTARIZE" == "true" ]]; then
-    log_info "Building with notarization..."
-    # Capture output while still displaying it
-    bun run build-mac 2>&1 | tee "$BUILD_LOG"
-    BUILD_EXIT_CODE=${PIPESTATUS[0]}
+  # Decode and import certificate
+  echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
 
-    if [[ $BUILD_EXIT_CODE -ne 0 ]]; then
-      log_error "Build failed with exit code $BUILD_EXIT_CODE"
-      rm -f "$BUILD_LOG"
-      exit 1
-    fi
+  # Delete existing keychain if it exists
+  security delete-keychain "$KEYCHAIN_NAME" 2>/dev/null || true
 
-    # Check if notarization was skipped
-    if grep -q "notarize skipped\|skipped macOS notarization\|notarize.*options were unable to be generated" "$BUILD_LOG"; then
-      log_error "Notarization was skipped by electron-builder!"
-      log_error "This usually means credentials are invalid or configuration is wrong."
-      log_error "Check your APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID."
-      log_error "If you intentionally want to skip notarization, use --no-notarize --skip-upload"
-      rm -f "$BUILD_LOG"
-      exit 1
-    fi
-  else
-    log_info "Building without notarization (local build)..."
-    bun run build-mac:local 2>&1 | tee "$BUILD_LOG"
-    BUILD_EXIT_CODE=${PIPESTATUS[0]}
+  # Create and configure keychain
+  security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
+  security default-keychain -s "$KEYCHAIN_NAME"
+  security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
+  security import certificate.p12 -k "$KEYCHAIN_NAME" -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
 
-    if [[ $BUILD_EXIT_CODE -ne 0 ]]; then
-      log_error "Build failed with exit code $BUILD_EXIT_CODE"
-      rm -f "$BUILD_LOG"
-      exit 1
-    fi
-  fi
+  # Cleanup certificate file
+  rm certificate.p12
 
-  rm -f "$BUILD_LOG"
-  log_success "Build completed"
+  log_success "Certificates configured from environment"
   echo ""
 else
-  log_info "Step 6: Skipped (using existing build)"
-  log_info "Step 7: Skipped (using existing build)"
+  log_info "Step 6: Using certificates from system keychain (local Mac)"
   echo ""
 fi
+
+# Step 7: Build macOS app
+log_info "Step 7: Building macOS app..."
+BUILD_LOG=$(mktemp)
+
+if [[ "$NOTARIZE" == "true" ]]; then
+  log_info "Building with notarization..."
+  # Capture output while still displaying it
+  bun run build-mac 2>&1 | tee "$BUILD_LOG"
+  BUILD_EXIT_CODE=${PIPESTATUS[0]}
+
+  if [[ $BUILD_EXIT_CODE -ne 0 ]]; then
+    log_error "Build failed with exit code $BUILD_EXIT_CODE"
+    rm -f "$BUILD_LOG"
+    exit 1
+  fi
+
+  # Check if notarization was skipped
+  if grep -q "notarize skipped\|skipped macOS notarization\|notarize.*options were unable to be generated" "$BUILD_LOG"; then
+    log_error "Notarization was skipped by electron-builder!"
+    log_error "This usually means credentials are invalid or configuration is wrong."
+    log_error "Check your APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID."
+    log_error "If you intentionally want to skip notarization, use --no-notarize --skip-upload"
+    rm -f "$BUILD_LOG"
+    exit 1
+  fi
+else
+  log_info "Building without notarization (local build)..."
+  bun run build-mac:local 2>&1 | tee "$BUILD_LOG"
+  BUILD_EXIT_CODE=${PIPESTATUS[0]}
+
+  if [[ $BUILD_EXIT_CODE -ne 0 ]]; then
+    log_error "Build failed with exit code $BUILD_EXIT_CODE"
+    rm -f "$BUILD_LOG"
+    exit 1
+  fi
+fi
+
+rm -f "$BUILD_LOG"
+log_success "Build completed"
+echo ""
 
 # Step 8: Create GitHub Release
 if [[ "$SKIP_UPLOAD" == "false" ]]; then

@@ -22,6 +22,10 @@ export function getNativeBinaryPath(binaryName: string): string {
     binaryName
   );
 
+  if (app.isPackaged) {
+    return prodPath;
+  }
+
   if (fs.existsSync(devPath)) {
     return devPath;
   }

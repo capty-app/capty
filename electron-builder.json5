@@ -3,6 +3,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.capty.app",
   "asar": true,
+  "afterPack": "./scripts/verify-packaged-native-binaries.cjs",
   "productName": "Capty",
   "directories": {
     "output": "release/${version}"
