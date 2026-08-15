@@ -3,19 +3,55 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const SYSTEM_LIBRARY_PREFIXES = ['/System/Library/', '/usr/lib/'];
 const ARCHITECTURES = ['arm64', 'x86_64'];
 const SMOKE_TEST_TIMEOUT = 10000;
-const FFMPEG_FEATURES = {
+const REQUIRED_FFMPEG_FEATURES = {
   encoders: [
     'h264_videotoolbox',
     'hevc_videotoolbox',
     'prores_videotoolbox',
+    'aac',
     'aac_at',
+    'pcm_s16le',
     'gif',
     'png',
     'mjpeg',
   ],
-  decoders: ['h264', 'hevc', 'aac', 'mp3', 'gif', 'png', 'mjpeg', 'prores'],
-  muxers: ['mp4', 'mov', 'gif', 'image2', 'mjpeg'],
-  demuxers: ['mp4', 'mov', 'gif', 'image2', 'mjpeg'],
+  decoders: [
+    'h264',
+    'hevc',
+    'aac',
+    'mp3',
+    'opus',
+    'pcm_s16le',
+    'vorbis',
+    'gif',
+    'png',
+    'mjpeg',
+    'prores',
+  ],
+  muxers: [
+    'mp4',
+    'mov',
+    'adts',
+    'ipod',
+    'wav',
+    'gif',
+    'image2',
+    'mjpeg',
+    'null',
+  ],
+  demuxers: [
+    'mp4',
+    'mov',
+    'aac',
+    'concat',
+    'mp3',
+    'ogg',
+    'wav',
+    'gif',
+    'image2',
+    'mjpeg',
+  ],
+  devices: ['lavfi'],
   protocols: ['file', 'pipe'],
   filters: [
     'scale',
@@ -28,6 +64,11 @@ const FFMPEG_FEATURES = {
     'null',
     'aformat',
     'anull',
+    'adelay',
+    'amix',
+    'anullsrc',
+    'atempo',
+    'volume',
     'concat',
     'trim',
     'atrim',
@@ -78,41 +119,60 @@ function getMissingFeatures(output, requiredFeatures, featureType) {
   return requiredFeatures.filter(feature => !availableFeatures.has(feature));
 }
 
-function runBinary(label, binaryPath, args, input, spawnBinary = spawnSync) {
-  const result = spawnBinary(binaryPath, args, {
-    encoding: 'utf8',
-    input,
-    killSignal: 'SIGKILL',
-    maxBuffer: 10 * 1024 * 1024,
-    timeout: SMOKE_TEST_TIMEOUT,
-  });
+function runBinary(
+  label,
+  binaryPath,
+  args,
+  input,
+  architecture,
+  spawnBinary = spawnSync
+) {
+  const result = spawnBinary(
+    '/usr/bin/arch',
+    [`-${architecture}`, binaryPath, ...args],
+    {
+      encoding: 'utf8',
+      input,
+      killSignal: 'SIGKILL',
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: SMOKE_TEST_TIMEOUT,
+    }
+  );
+  const architectureLabel = `${label} (${architecture})`;
 
   if (result.error?.code === 'ETIMEDOUT') {
-    throw new Error(`${label} smoke test timed out: ${binaryPath}`);
+    throw new Error(`${architectureLabel} smoke test timed out: ${binaryPath}`);
   }
 
   if (result.error) {
-    throw new Error(`${label} failed to start: ${result.error.message}`);
+    throw new Error(
+      `${architectureLabel} failed to start: ${result.error.message}`
+    );
   }
 
   if (result.status !== 0) {
     const details = result.stderr?.trim();
-    throw new Error(details || `${label} exited with status ${result.status}`);
+    throw new Error(
+      details || `${architectureLabel} exited with status ${result.status}`
+    );
   }
 
   return `${result.stdout || ''}\n${result.stderr || ''}`;
 }
 
-function verifyFFmpegRuntime(binaryPath) {
-  runBinary('FFmpeg', binaryPath, ['-version']);
+function verifyFFmpegRuntime(binaryPath, architecture, run = runBinary) {
+  run('FFmpeg', binaryPath, ['-version'], undefined, architecture);
 
   for (const [featureType, requiredFeatures] of Object.entries(
-    FFMPEG_FEATURES
+    REQUIRED_FFMPEG_FEATURES
   )) {
-    const output = runBinary('FFmpeg', binaryPath, [
-      '-hide_banner',
-      `-${featureType}`,
-    ]);
+    const output = run(
+      'FFmpeg',
+      binaryPath,
+      ['-hide_banner', `-${featureType}`],
+      undefined,
+      architecture
+    );
     const missingFeatures = getMissingFeatures(
       output,
       requiredFeatures,
@@ -122,15 +182,15 @@ function verifyFFmpegRuntime(binaryPath) {
     if (missingFeatures.length === 0) continue;
 
     throw new Error(
-      `FFmpeg is missing required ${featureType}: ${missingFeatures.join(', ')}`
+      `FFmpeg (${architecture}) is missing required ${featureType}: ${missingFeatures.join(', ')}`
     );
   }
 }
 
-function verifyNativeRuntime(label, binaryPath) {
+function verifyNativeRuntime(label, binaryPath, architecture, run = runBinary) {
   switch (label) {
     case 'capty-daemon': {
-      const output = runBinary(
+      const output = run(
         label,
         binaryPath,
         [],
@@ -138,7 +198,8 @@ function verifyNativeRuntime(label, binaryPath) {
           '{"id":"ping","module":"system","method":"ping"}',
           '{"id":"quit","module":"system","method":"quit"}',
           '',
-        ].join('\n')
+        ].join('\n'),
+        architecture
       );
 
       if (
@@ -146,29 +207,40 @@ function verifyNativeRuntime(label, binaryPath) {
         !output.includes('"pong":true')
       ) {
         throw new Error(
-          `${label} failed its protocol smoke test: ${binaryPath}`
+          `${label} (${architecture}) failed its protocol smoke test: ${binaryPath}`
         );
       }
       return;
     }
     case 'FFmpeg':
-      verifyFFmpegRuntime(binaryPath);
+      verifyFFmpegRuntime(binaryPath, architecture, run);
       return;
     case 'Whisper': {
-      const output = runBinary(label, binaryPath, ['--help']);
+      const output = run(
+        label,
+        binaryPath,
+        ['--help'],
+        undefined,
+        architecture
+      );
 
       if (!output.includes('-dtw') || !output.includes('-ojf')) {
         throw new Error(
-          `${label} failed its feature smoke test: ${binaryPath}`
+          `${label} (${architecture}) failed its feature smoke test: ${binaryPath}`
         );
       }
     }
   }
 }
 
-function verifyNativeBinary(label, binaryPath) {
+function verifyNativeBinary(
+  label,
+  binaryPath,
+  inspectBinary = execFileSync,
+  verifyRuntime = verifyNativeRuntime
+) {
   const outputs = ARCHITECTURES.map(architecture =>
-    execFileSync('/usr/bin/otool', ['-L', '-arch', architecture, binaryPath], {
+    inspectBinary('/usr/bin/otool', ['-L', '-arch', architecture, binaryPath], {
       encoding: 'utf8',
     })
   );
@@ -182,7 +254,9 @@ function verifyNativeBinary(label, binaryPath) {
     );
   }
 
-  verifyNativeRuntime(label, binaryPath);
+  for (const architecture of ARCHITECTURES) {
+    verifyRuntime(label, binaryPath, architecture);
+  }
 }
 
 if (require.main === module) {
@@ -202,9 +276,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  REQUIRED_FFMPEG_FEATURES,
   getMissingFeatures,
   getUnsupportedDependencies,
   parseLinkedDependencies,
   runBinary,
+  verifyFFmpegRuntime,
   verifyNativeBinary,
 };

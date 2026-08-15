@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
 
-  if ! node "$BINARY_VERIFIER" "$label" "$binary_path"; then
+  if ! bun "$BINARY_VERIFIER" "$label" "$binary_path"; then
     failed=1
     continue
   fi
