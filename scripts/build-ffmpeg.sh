@@ -122,6 +122,8 @@ build_for_arch() {
         --target-os=darwin \
         --enable-static \
         --disable-shared \
+        --disable-autodetect \
+        --enable-zlib \
         --disable-gpl \
         --disable-nonfree \
         --disable-libx264 \
