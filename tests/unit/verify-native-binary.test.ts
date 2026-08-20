@@ -94,6 +94,7 @@ const productionFFmpegRequirements: Array<[FeatureType, string]> = [
   ['demuxers', 'ogg'],
   ['demuxers', 'wav'],
   ['devices', 'lavfi'],
+  ['protocols', 'file'],
   ['filters', 'adelay'],
   ['filters', 'amix'],
   ['filters', 'anullsrc'],
