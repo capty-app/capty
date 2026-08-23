@@ -136,9 +136,18 @@ export async function startRecordingWithConfig(
         )
       : Promise.resolve();
 
-  const [response] = await Promise.all([startPromise, overlayPromise]);
+  let response: RecorderResponse;
+
+  try {
+    [response] = await Promise.all([startPromise, overlayPromise]);
+  } catch (error) {
+    await overlayPromise;
+    await hideRecordingOverlay();
+    throw error;
+  }
 
   if (!response.success) {
+    await hideRecordingOverlay();
     throw new Error(response.message || 'Failed to start recording');
   }
 

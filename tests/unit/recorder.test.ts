@@ -159,6 +159,38 @@ describe('recorder', () => {
       await expect(
         m.startRecordingWithConfig({ outputPath: '/out.mov' }, vi.fn())
       ).rejects.toThrow('bad config');
+      expect(mockHideOverlay).toHaveBeenCalled();
+    });
+
+    it('waits for an in-flight overlay before cleanup when start fails', async () => {
+      let resolveOverlay: () => void = () => {};
+      mockShowOverlay.mockImplementation(
+        () =>
+          new Promise<void>(resolve => {
+            resolveOverlay = resolve;
+          })
+      );
+      mockDaemonCall.mockRejectedValue(new Error('start failed'));
+      const m = await import('@/main/capture/video/recorder');
+      const result = m
+        .startRecordingWithConfig(
+          {
+            x: 10,
+            y: 20,
+            width: 800,
+            height: 600,
+            outputPath: '/out.mov',
+          },
+          vi.fn()
+        )
+        .catch(error => error as Error);
+
+      await Promise.resolve();
+      expect(mockHideOverlay).not.toHaveBeenCalled();
+
+      resolveOverlay();
+      expect((await result).message).toBe('start failed');
+      expect(mockHideOverlay).toHaveBeenCalled();
     });
   });
 

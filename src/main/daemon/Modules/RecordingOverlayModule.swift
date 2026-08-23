@@ -101,7 +101,9 @@ class RecordingOverlayModule: Module {
     
     private func hideOverlay() {
         for window in windows {
+            window.contentView = nil
             window.orderOut(nil)
+            window.close()
         }
         windows.removeAll()
         overlayViews.removeAll()

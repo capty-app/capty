@@ -1068,7 +1068,9 @@ private class AreaSelector {
     
     func cleanup() {
         for window in windows {
+            window.contentView = nil
             window.orderOut(nil)
+            window.close()
         }
         windows.removeAll()
         overlayViews.removeAll()

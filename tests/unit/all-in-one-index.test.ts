@@ -178,7 +178,7 @@ describe('all-in-one orchestrator', () => {
     });
   });
 
-  it('onCancelled unregisters shortcuts', async () => {
+  it('onCancelled unregisters shortcuts and hides the control', async () => {
     mockStartAreaSelection.mockImplementation(
       async ({ onCancelled }: { onCancelled: () => void }) => {
         onCancelled();
@@ -188,6 +188,7 @@ describe('all-in-one orchestrator', () => {
     const startAllInOne = (await import('@/main/capture/all-in-one')).default;
     await startAllInOne();
     expect(mockGlobalShortcutUnregister).toHaveBeenCalled();
+    expect(mockHideAllInOneControl).toHaveBeenCalled();
   });
 
   describe('callbacks installed', () => {
