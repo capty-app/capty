@@ -1,5 +1,56 @@
 import { describe, it, expect } from 'vitest';
-import { getMarkInterval } from '@/renderer/components/video-editor/timeline/ruler-scale';
+import {
+  getFitToViewPixelsPerSecond,
+  getMarkInterval,
+} from '@/renderer/components/video-editor/timeline/ruler-scale';
+import {
+  MAX_PIXELS_PER_SECOND,
+  MIN_PIXELS_PER_SECOND,
+  TIMELINE_H_PADDING,
+} from '@/renderer/components/video-editor/timeline/timeline-constants';
+
+describe('getFitToViewPixelsPerSecond', () => {
+  it('accounts for horizontal padding in the fitted width', () => {
+    const containerWidth = 1024;
+    const displayDuration = 10;
+    const pixelsPerSecond = getFitToViewPixelsPerSecond(
+      containerWidth,
+      displayDuration
+    );
+
+    expect(pixelsPerSecond).toBe(100);
+    expect(displayDuration * pixelsPerSecond + TIMELINE_H_PADDING * 2).toBe(
+      containerWidth
+    );
+  });
+
+  it('fits the retained display duration instead of the shorter content', () => {
+    const containerWidth = 1024;
+    const retainedDisplayDuration = 20;
+    const pixelsPerSecond = getFitToViewPixelsPerSecond(
+      containerWidth,
+      retainedDisplayDuration
+    );
+
+    expect(pixelsPerSecond).toBe(50);
+    expect(
+      retainedDisplayDuration * pixelsPerSecond + TIMELINE_H_PADDING * 2
+    ).toBe(containerWidth);
+  });
+
+  it('clamps to the minimum zoom level', () => {
+    expect(getFitToViewPixelsPerSecond(100, 100)).toBe(MIN_PIXELS_PER_SECOND);
+  });
+
+  it('clamps to the maximum zoom level', () => {
+    expect(getFitToViewPixelsPerSecond(1024, 1)).toBe(MAX_PIXELS_PER_SECOND);
+  });
+
+  it('uses the minimum zoom level for non-positive durations', () => {
+    expect(getFitToViewPixelsPerSecond(1024, 0)).toBe(MIN_PIXELS_PER_SECOND);
+    expect(getFitToViewPixelsPerSecond(1024, -1)).toBe(MIN_PIXELS_PER_SECOND);
+  });
+});
 
 describe('getMarkInterval', () => {
   it('picks the smallest interval at high zoom', () => {

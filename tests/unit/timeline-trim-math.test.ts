@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   getTrimResizeBounds,
+  getResizedTimelineEdge,
   applyTrimDelta,
   MIN_SOURCE_SEGMENT_DURATION,
 } from '@/renderer/components/video-editor/timeline/trim-math';
@@ -16,6 +17,17 @@ function makeSegment(overrides: Partial<Segment> = {}): Segment {
     ...overrides,
   };
 }
+
+describe('getResizedTimelineEdge', () => {
+  it('preserves the pointer offset from the edge', () => {
+    expect(getResizedTimelineEdge(5, 6, 8, { min: 3, max: 10.5 })).toBe(7);
+  });
+
+  it('reaches edge-based bounds regardless of the pointer offset', () => {
+    expect(getResizedTimelineEdge(5, 6, 20, { min: 3, max: 10.5 })).toBe(10.5);
+    expect(getResizedTimelineEdge(11, 10, 0, { min: 5.5, max: 13 })).toBe(5.5);
+  });
+});
 
 describe('applyTrimDelta', () => {
   it('applies a timeline delta one-to-one at speed 1', () => {

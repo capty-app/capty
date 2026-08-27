@@ -19,6 +19,7 @@ import {
 import Track, { type TrackSegment } from './track';
 import TrackRow from './track-row';
 import SegmentWaveform from './segment-waveform';
+import { getAudioSegmentFractions } from './audio-peaks';
 import type { TrackColors } from './track-colors';
 import { TRACK_COLORS } from './track-colors';
 import { formatDuration } from '../utils';
@@ -70,16 +71,14 @@ export default function MusicTrack({
     if (!waveformSrc) return null;
 
     const sourceLength = (track.endTime - track.startTime) * (track.speed || 1);
-    const fileDuration = track.trimStart + sourceLength + track.trimEnd;
-    if (fileDuration <= 0) return null;
-
-    return (
-      <SegmentWaveform
-        src={waveformSrc}
-        startFraction={track.trimStart / fileDuration}
-        endFraction={(track.trimStart + sourceLength) / fileDuration}
-      />
+    const fractions = getAudioSegmentFractions(
+      track.originalDuration,
+      track.trimStart,
+      track.trimStart + sourceLength
     );
+    if (!fractions) return null;
+
+    return <SegmentWaveform src={waveformSrc} {...fractions} />;
   }, [waveformSrc, track]);
 
   const renderLabel = useCallback(

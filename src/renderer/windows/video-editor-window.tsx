@@ -24,8 +24,7 @@ import {
   buildBuiltInMusicTracks,
   useMusicPlayback,
   DEFAULT_PIXELS_PER_SECOND,
-  MIN_PIXELS_PER_SECOND,
-  MAX_PIXELS_PER_SECOND,
+  getFitToViewPixelsPerSecond,
 } from '@/renderer/components/video-editor';
 import type { VideoEditorSidebarShortcuts } from '@/types/settings';
 import type { MusicTrack as MusicTrackType } from '@/types/music';
@@ -465,17 +464,21 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
 
   const handleFitToView = useCallback(() => {
     const container = timelineRef.current;
-    const duration = playback.totalTimelineDuration;
+    const duration = Math.max(
+      playback.totalTimelineDuration,
+      displayTimelineDuration
+    );
     if (!container || duration <= 0) return;
 
-    const target = container.clientWidth / duration;
-    const clamped = Math.max(
-      MIN_PIXELS_PER_SECOND,
-      Math.min(MAX_PIXELS_PER_SECOND, target)
+    timelineZoomState.setZoomLevel(
+      getFitToViewPixelsPerSecond(container.clientWidth, duration)
     );
-    timelineZoomState.setZoomLevel(clamped);
     container.scrollLeft = 0;
-  }, [playback.totalTimelineDuration, timelineZoomState]);
+  }, [
+    displayTimelineDuration,
+    playback.totalTimelineDuration,
+    timelineZoomState,
+  ]);
 
   const getTimelinePosition = useCallback(
     () => playback.timelinePosition,

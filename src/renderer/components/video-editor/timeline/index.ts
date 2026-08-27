@@ -1,6 +1,7 @@
 export { default as TimelinePanel } from './timeline-panel';
 export { default as TimelineControls } from './timeline-controls';
 export { default as TimelineRuler } from './timeline-ruler';
+export { getFitToViewPixelsPerSecond } from './ruler-scale';
 export { default as TimelineTrack } from './timeline-track';
 export { default as TimelineTracks } from './timeline-tracks';
 export { default as Track } from './track';

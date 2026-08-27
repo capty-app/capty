@@ -8,6 +8,7 @@ import {
   type TrackColors,
 } from './track-colors';
 import { formatDuration } from '../utils';
+import { getResizedTimelineEdge } from './trim-math';
 import { cn } from '@/renderer/lib/utils';
 
 export interface TrackSegment {
@@ -308,29 +309,29 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
           onMove(dragState.segmentId, newStart, newEnd);
         } else if (dragState.type === 'resize-start' && onResize) {
-          const bounds = dragState.bounds;
-          const newStart = bounds
-            ? Math.max(bounds.min, Math.min(bounds.max, rawXToTime(e.clientX)))
-            : Math.max(
-                0,
-                Math.min(
-                  dragState.initialEnd! - MIN_SEGMENT_DURATION,
-                  currentTime
-                )
-              );
+          const bounds = dragState.bounds ?? {
+            min: 0,
+            max: dragState.initialEnd! - MIN_SEGMENT_DURATION,
+          };
+          const newStart = getResizedTimelineEdge(
+            dragState.initialStart!,
+            dragState.startTime,
+            rawXToTime(e.clientX),
+            bounds
+          );
           didDragRef.current = true;
           onResize(dragState.segmentId, newStart, dragState.initialEnd!);
         } else if (dragState.type === 'resize-end' && onResize) {
-          const bounds = dragState.bounds;
-          const newEnd = bounds
-            ? Math.max(bounds.min, Math.min(bounds.max, rawXToTime(e.clientX)))
-            : Math.min(
-                totalDuration,
-                Math.max(
-                  dragState.initialStart! + MIN_SEGMENT_DURATION,
-                  currentTime
-                )
-              );
+          const bounds = dragState.bounds ?? {
+            min: dragState.initialStart! + MIN_SEGMENT_DURATION,
+            max: totalDuration,
+          };
+          const newEnd = getResizedTimelineEdge(
+            dragState.initialEnd!,
+            dragState.startTime,
+            rawXToTime(e.clientX),
+            bounds
+          );
           didDragRef.current = true;
           onResize(dragState.segmentId, dragState.initialStart!, newEnd);
         }

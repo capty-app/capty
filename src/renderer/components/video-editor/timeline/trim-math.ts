@@ -7,6 +7,16 @@ export interface TrimBounds {
   max: number;
 }
 
+export function getResizedTimelineEdge(
+  initialEdge: number,
+  initialPointerTime: number,
+  currentPointerTime: number,
+  bounds: TrimBounds
+): number {
+  const candidate = initialEdge + currentPointerTime - initialPointerTime;
+  return Math.max(bounds.min, Math.min(bounds.max, candidate));
+}
+
 export function getTrimResizeBounds(
   edge: 'start' | 'end',
   segment: Segment,

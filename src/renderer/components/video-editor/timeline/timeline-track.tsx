@@ -4,6 +4,7 @@ import Track from './track';
 import TrackRow, { VIDEO_TRACK_HEIGHT } from './track-row';
 import TrimPin from './trim-pin';
 import SegmentWaveform from './segment-waveform';
+import { getAudioSegmentFractions } from './audio-peaks';
 import type { Segment, TrimState } from '../types';
 import { formatPlaybackSpeed } from '@/types/playback-speed';
 import {
@@ -44,7 +45,7 @@ interface TimelineTrackProps {
 interface TrimGesture {
   segmentId: string;
   edge: 'start' | 'end';
-  startCursorTime: number;
+  initialEdgeTime: number;
 }
 
 export default function TimelineTrack({
@@ -128,17 +129,18 @@ export default function TimelineTrack({
 
   const renderWaveform = useCallback(
     (trackSegment: { id: string }) => {
-      if (!waveformSrc || originalDuration === 0) return null;
+      if (!waveformSrc) return null;
       const segment = segmentMap.get(trackSegment.id);
       if (!segment) return null;
 
-      return (
-        <SegmentWaveform
-          src={waveformSrc}
-          startFraction={segment.originalStart / originalDuration}
-          endFraction={segment.originalEnd / originalDuration}
-        />
+      const fractions = getAudioSegmentFractions(
+        originalDuration,
+        segment.originalStart,
+        segment.originalEnd
       );
+      if (!fractions) return null;
+
+      return <SegmentWaveform src={waveformSrc} {...fractions} />;
     },
     [segmentMap, waveformSrc, originalDuration]
   );
@@ -151,16 +153,18 @@ export default function TimelineTrack({
     ) => {
       if (type === 'move') return;
 
-      const row = rowRef.current;
-      if (!row) return;
+      const timelineSegment = timelineSegments.find(
+        segment => segment.id === segmentId
+      );
+      if (!timelineSegment) return;
 
       const edge = type === 'resize-start' ? 'start' : 'end';
-      const startCursorTime =
-        (e.clientX - row.getBoundingClientRect().left) / pixelsPerSecond;
-      trimGestureRef.current = { segmentId, edge, startCursorTime };
+      const initialEdgeTime =
+        edge === 'start' ? timelineSegment.startTime : timelineSegment.endTime;
+      trimGestureRef.current = { segmentId, edge, initialEdgeTime };
       onTrimStart(e, segmentId, edge);
     },
-    [pixelsPerSecond, onTrimStart]
+    [timelineSegments, onTrimStart]
   );
 
   const handleResize = useCallback(
@@ -169,7 +173,7 @@ export default function TimelineTrack({
       if (!gesture || gesture.segmentId !== id) return;
 
       const reportedEdge = gesture.edge === 'start' ? newStart : newEnd;
-      onTrimResize(id, gesture.edge, reportedEdge - gesture.startCursorTime);
+      onTrimResize(id, gesture.edge, reportedEdge - gesture.initialEdgeTime);
     },
     [onTrimResize]
   );
