@@ -1,28 +1,25 @@
 import { useMemo } from 'react';
-import { formatTime } from '../utils';
 import { useTimeline } from './use-timeline';
+import { getMarkInterval } from './ruler-scale';
+import { TIMELINE_H_PADDING } from './timeline-constants';
 
 interface TimelineRulerProps {
   totalDuration: number;
   minDisplayDuration?: number;
 }
 
-function getMarkInterval(pixelsPerSecond: number): number {
-  const targetPixelsBetweenMarks = 60;
-  const rawInterval = targetPixelsBetweenMarks / pixelsPerSecond;
-
-  const intervals = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
-  for (const interval of intervals) {
-    if (rawInterval <= interval) return interval;
-  }
-  return 60;
+function formatMark(seconds: number): string {
+  if (seconds < 60) return `${Number(seconds.toFixed(2))}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
 }
 
 export default function TimelineRuler({
   totalDuration,
   minDisplayDuration,
 }: TimelineRulerProps) {
-  const { pixelsPerSecond, scrollContainerRef } = useTimeline();
+  const { pixelsPerSecond, rulerScrollRef, tracksScrollRef } = useTimeline();
 
   const marks = useMemo(() => {
     if (totalDuration === 0) return [];
@@ -30,7 +27,7 @@ export default function TimelineRuler({
     const interval = getMarkInterval(pixelsPerSecond);
     const result: { time: number; position: number }[] = [];
 
-    for (let time = 0; time <= totalDuration; time += interval) {
+    for (let time = interval; time <= totalDuration; time += interval) {
       result.push({
         time,
         position: time * pixelsPerSecond,
@@ -44,40 +41,32 @@ export default function TimelineRuler({
   const totalWidth = displayDuration * pixelsPerSecond;
 
   return (
-    <div className="flex h-7 shrink-0 border-b pt-1">
-      <div className="w-10 shrink-0" />
+    <div className="flex h-7 shrink-0">
       <div
-        ref={scrollContainerRef}
+        ref={rulerScrollRef}
         className="scrollbar-hide relative flex-1 overflow-x-auto overflow-y-hidden"
         onScroll={e => {
-          const scrollLeft = e.currentTarget.scrollLeft;
-          const tracksContainer = document.querySelector(
-            '[data-timeline-tracks]'
-          );
-          if (tracksContainer) {
-            tracksContainer.scrollLeft = scrollLeft;
+          if (tracksScrollRef.current) {
+            tracksScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
           }
         }}
       >
-        <div className="relative h-full" style={{ width: `${totalWidth}px` }}>
-          {marks.map(mark => {
-            const isFirst = mark.time === 0;
-            return (
-              <div
-                key={mark.time}
-                className={`absolute top-0 flex h-full flex-col ${isFirst ? 'items-start' : 'items-center'}`}
-                style={{
-                  left: `${mark.position}px`,
-                  transform: isFirst ? 'none' : 'translateX(-50%)',
-                }}
-              >
-                <span className="text-muted-foreground text-xs">
-                  {formatTime(mark.time)}
-                </span>
-                <div className="bg-muted-foreground/30 mt-0.5 h-2 w-px" />
-              </div>
-            );
-          })}
+        <div
+          className="relative h-full"
+          style={{ width: `${totalWidth + TIMELINE_H_PADDING * 2}px` }}
+        >
+          {marks.map(mark => (
+            <div
+              key={mark.time}
+              className="absolute top-1.5 flex -translate-x-1/2 flex-col items-center gap-1"
+              style={{ left: `${TIMELINE_H_PADDING + mark.position}px` }}
+            >
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {formatMark(mark.time)}
+              </span>
+              <span className="bg-muted-foreground/40 size-0.5 rounded-full" />
+            </div>
+          ))}
         </div>
       </div>
     </div>

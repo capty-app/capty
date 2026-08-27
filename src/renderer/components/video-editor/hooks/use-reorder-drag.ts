@@ -13,6 +13,7 @@ interface UseReorderDragProps {
   segments: Segment[];
   isCutToolActive: boolean;
   pixelsPerSecond: number;
+  rowRef: React.RefObject<HTMLElement | null>;
   onReorder: (segmentId: string, newIndex: number) => void;
 }
 
@@ -25,12 +26,12 @@ export function useReorderDrag({
   segments,
   isCutToolActive,
   pixelsPerSecond,
+  rowRef,
   onReorder,
 }: UseReorderDragProps): UseReorderDragReturn {
   const [reorderState, setReorderState] = useState<ReorderDragState | null>(
     null
   );
-  const trackElRef = useRef<HTMLElement | null>(null);
   const segmentsRef = useRef(segments);
   const pixelsPerSecondRef = useRef(pixelsPerSecond);
   const onReorderRef = useRef(onReorder);
@@ -44,9 +45,7 @@ export function useReorderDrag({
       const segs = segmentsRef.current;
       const pps = pixelsPerSecondRef.current;
       const rect = trackEl.getBoundingClientRect();
-      const scrollLeft =
-        trackEl.closest('[data-timeline-tracks]')?.scrollLeft ?? 0;
-      const x = clientX - rect.left + scrollLeft;
+      const x = clientX - rect.left;
       const cursorTime = x / pps;
 
       const draggedIndex = segs.findIndex(s => s.id === draggedId);
@@ -73,11 +72,6 @@ export function useReorderDrag({
       if (isCutToolActive) return;
       if (segments.length <= 1) return;
 
-      const trackEl = (e.currentTarget as HTMLElement).closest(
-        '[data-track-container]'
-      ) as HTMLElement | null;
-      trackElRef.current = trackEl;
-
       const startX = e.clientX;
       const startY = e.clientY;
       let isDragging = false;
@@ -103,11 +97,11 @@ export function useReorderDrag({
           return;
         }
 
-        if (!trackElRef.current) return;
+        if (!rowRef.current) return;
 
         const dropIndex = getDropIndex(
           moveEvent.clientX,
-          trackElRef.current,
+          rowRef.current,
           segmentId
         );
         setReorderState(prev =>
@@ -140,7 +134,7 @@ export function useReorderDrag({
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     },
-    [isCutToolActive, segments.length, getDropIndex]
+    [isCutToolActive, segments.length, getDropIndex, rowRef]
   );
 
   useEffect(() => {

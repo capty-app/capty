@@ -10,10 +10,6 @@ export interface Segment {
 export interface TrimState {
   segmentId: string;
   edge: 'start' | 'end';
-  initialMouseX: number;
-  initialValue: number;
-  initialTimelineDuration: number;
-  initialScrollLeft: number;
 }
 
 export interface VideoToTimelineResult {

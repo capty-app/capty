@@ -1,7 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { Film } from 'lucide-react';
 import Track from './track';
-import TrackRow from './track-row';
+import TrackRow, { VIDEO_TRACK_HEIGHT } from './track-row';
+import TrimPin from './trim-pin';
+import SegmentWaveform from './segment-waveform';
+import { getAudioSegmentFractions } from './audio-peaks';
 import type { Segment, TrimState } from '../types';
 import { formatPlaybackSpeed } from '@/types/playback-speed';
 import {
@@ -13,6 +16,7 @@ import {
 } from '../utils';
 import { useTimeline } from './use-timeline';
 import { useReorderDrag } from '../hooks/use-reorder-drag';
+import { getTrimResizeBounds } from './trim-math';
 
 interface TimelineTrackProps {
   segments: Segment[];
@@ -25,9 +29,23 @@ interface TimelineTrackProps {
     segmentId: string,
     edge: 'start' | 'end'
   ) => void;
+  onTrimResize: (
+    segmentId: string,
+    edge: 'start' | 'end',
+    deltaTlTime: number
+  ) => void;
+  onTrimEnd: () => void;
   onCut: (cutVideoTime: number) => void;
   onReorder: (segmentId: string, newIndex: number) => void;
   onSeek?: (timelinePosition: number) => void;
+  waveformSrc?: string | null;
+  originalDuration?: number;
+}
+
+interface TrimGesture {
+  segmentId: string;
+  edge: 'start' | 'end';
+  initialEdgeTime: number;
 }
 
 export default function TimelineTrack({
@@ -37,9 +55,13 @@ export default function TimelineTrack({
   trimState,
   onSegmentSelect,
   onTrimStart,
+  onTrimResize,
+  onTrimEnd,
   onCut,
   onReorder,
   onSeek,
+  waveformSrc,
+  originalDuration = 0,
 }: TimelineTrackProps) {
   const { pixelsPerSecond } = useTimeline();
 
@@ -66,10 +88,14 @@ export default function TimelineTrack({
       ? timelineSegments[timelineSegments.length - 1].endTime
       : 0;
 
+  const rowRef = useRef<HTMLDivElement>(null);
+  const trimGestureRef = useRef<TrimGesture | null>(null);
+
   const { reorderState, handleReorderMouseDown } = useReorderDrag({
     segments,
     isCutToolActive,
     pixelsPerSecond,
+    rowRef,
     onReorder,
   });
 
@@ -82,15 +108,16 @@ export default function TimelineTrack({
       const hasSpeedChange = speed !== 1;
       const segmentDuration = getSegmentDuration(segment);
 
-      if (widthPixels < 100) {
-        return <Film className="size-3.5 text-white" />;
+      if (widthPixels < 90) {
+        return <Film className="size-3" />;
       }
 
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5">
+          <Film className="size-3 shrink-0" />
           <span>{formatDuration(segmentDuration)}</span>
           {hasSpeedChange && (
-            <span className="rounded bg-white/20 px-1.5 py-0.5 text-xs font-medium text-white">
+            <span className="rounded bg-black/25 px-1 text-xs font-semibold">
               {formatPlaybackSpeed(speed)}
             </span>
           )}
@@ -100,31 +127,79 @@ export default function TimelineTrack({
     [segmentMap]
   );
 
-  const renderOverlay = useCallback(
+  const renderWaveform = useCallback(
     (trackSegment: { id: string }) => {
-      if (isCutToolActive) return null;
-
+      if (!waveformSrc) return null;
       const segment = segmentMap.get(trackSegment.id);
       if (!segment) return null;
 
-      return (
-        <>
-          <div
-            className="absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20"
-            onMouseDown={e => onTrimStart(e, segment.id, 'start')}
-          >
-            <div className="absolute top-1/2 left-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
-          </div>
-          <div
-            className="absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20"
-            onMouseDown={e => onTrimStart(e, segment.id, 'end')}
-          >
-            <div className="absolute top-1/2 right-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
-          </div>
-        </>
+      const fractions = getAudioSegmentFractions(
+        originalDuration,
+        segment.originalStart,
+        segment.originalEnd
       );
+      if (!fractions) return null;
+
+      return <SegmentWaveform src={waveformSrc} {...fractions} />;
     },
-    [isCutToolActive, onTrimStart, segmentMap]
+    [segmentMap, waveformSrc, originalDuration]
+  );
+
+  const handleGestureStart = useCallback(
+    (
+      e: React.PointerEvent,
+      type: 'move' | 'resize-start' | 'resize-end',
+      segmentId: string
+    ) => {
+      if (type === 'move') return;
+
+      const timelineSegment = timelineSegments.find(
+        segment => segment.id === segmentId
+      );
+      if (!timelineSegment) return;
+
+      const edge = type === 'resize-start' ? 'start' : 'end';
+      const initialEdgeTime =
+        edge === 'start' ? timelineSegment.startTime : timelineSegment.endTime;
+      trimGestureRef.current = { segmentId, edge, initialEdgeTime };
+      onTrimStart(e, segmentId, edge);
+    },
+    [timelineSegments, onTrimStart]
+  );
+
+  const handleResize = useCallback(
+    (id: string, newStart: number, newEnd: number) => {
+      const gesture = trimGestureRef.current;
+      if (!gesture || gesture.segmentId !== id) return;
+
+      const reportedEdge = gesture.edge === 'start' ? newStart : newEnd;
+      onTrimResize(id, gesture.edge, reportedEdge - gesture.initialEdgeTime);
+    },
+    [onTrimResize]
+  );
+
+  const handleGestureEnd = useCallback(
+    (type: 'move' | 'resize-start' | 'resize-end') => {
+      if (type === 'move') return;
+
+      trimGestureRef.current = null;
+      onTrimEnd();
+    },
+    [onTrimEnd]
+  );
+
+  const getResizeBounds = useCallback(
+    (segmentId: string, edge: 'start' | 'end') => {
+      const segment = segmentMap.get(segmentId);
+      const tlSegment = timelineSegments.find(s => s.id === segmentId);
+      if (!segment || !tlSegment) {
+        return { min: 0, max: Number.POSITIVE_INFINITY };
+      }
+
+      const tlEdge = edge === 'start' ? tlSegment.startTime : tlSegment.endTime;
+      return getTrimResizeBounds(edge, segment, tlEdge);
+    },
+    [segmentMap, timelineSegments]
   );
 
   const dropIndicatorPixels = useMemo(() => {
@@ -145,20 +220,31 @@ export default function TimelineTrack({
 
   const draggingSegmentId = reorderState?.segmentId ?? null;
 
+  const trimmedStart =
+    segments.length > 0
+      ? segments[0].originalStart - segments[0].trimMinStart
+      : 0;
+  const lastSegment = segments[segments.length - 1];
+  const trimmedEnd = lastSegment
+    ? lastSegment.trimMaxEnd - lastSegment.originalEnd
+    : 0;
+
   return (
-    <TrackRow className="relative" data-track-container>
+    <TrackRow className="relative" height={VIDEO_TRACK_HEIGHT}>
       <Track
+        ref={rowRef}
         segments={timelineSegments}
         totalDuration={totalDuration}
         selectedId={selectedSegmentId}
         isToolActive={isCutToolActive}
-        colors="orange"
+        colors="video"
         features={{
           showCutMarkers: !reorderState,
           toolCursor: SCISSORS_CURSOR,
           renderLabel,
-          renderSegmentOverlay: renderOverlay,
+          renderSegmentOverlay: renderWaveform,
           allowTrackClickOnSegments: true,
+          selectOnResize: false,
         }}
         disableTransitions={trimState !== null || reorderState !== null}
         draggingSegmentId={draggingSegmentId}
@@ -166,6 +252,10 @@ export default function TimelineTrack({
           if (trimState || reorderState) return;
           onSegmentSelect(id);
         }}
+        onResize={handleResize}
+        onGestureStart={handleGestureStart}
+        onGestureEnd={handleGestureEnd}
+        getResizeBounds={getResizeBounds}
         onSegmentMouseDown={handleReorderMouseDown}
         onTrackClick={time => {
           const { videoTime } = timelineToVideo(segments, time);
@@ -173,9 +263,19 @@ export default function TimelineTrack({
           onSeek?.(time);
         }}
       />
+      {trimmedStart > 0.05 && !reorderState && (
+        <TrimPin seconds={trimmedStart} positionPixels={0} edge="start" />
+      )}
+      {trimmedEnd > 0.05 && !reorderState && (
+        <TrimPin
+          seconds={trimmedEnd}
+          positionPixels={totalDuration * pixelsPerSecond}
+          edge="end"
+        />
+      )}
       {dropIndicatorPixels !== null && (
         <div
-          className="pointer-events-none absolute top-0 z-30 h-full w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,0.6)]"
+          className="bg-primary shadow-primary/60 pointer-events-none absolute top-0 z-30 h-full w-0.5 shadow-[0_0_6px]"
           style={{ left: `${dropIndicatorPixels}px` }}
         />
       )}

@@ -43,6 +43,13 @@
 
   /* Focus Ring - Matches Primary */
   --ring: oklch(0.58 0.233 260.98 / 0.5);
+
+  --track-video: oklch(0.66 0.12 75);
+  --track-zoom: oklch(0.51 0.24 276);
+  --track-draw: oklch(0.63 0.12 165);
+  --track-music: oklch(0.55 0.22 300);
+  --trim-pin: oklch(0.76 0.14 70);
+  --playhead: var(--track-zoom);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -107,6 +114,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-track-video: var(--track-video);
+  --color-track-zoom: var(--track-zoom);
+  --color-track-draw: var(--track-draw);
+  --color-track-music: var(--track-music);
+  --color-trim-pin: var(--trim-pin);
+  --color-playhead: var(--playhead);
 }
 
 @layer base {

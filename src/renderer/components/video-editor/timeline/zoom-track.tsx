@@ -97,11 +97,14 @@ const ZoomTrack = forwardRef<HTMLDivElement, ZoomTrackProps>(
         const level = zoomSeg.zoomLevel;
         const formatted =
           level % 1 === 0 ? `${level}x` : `${level.toFixed(1)}x`;
-        const showText = widthPixels >= 50;
+        const mode = zoomSeg.targetMode === 'manual' ? 'Manual' : 'Auto';
         return (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1.5">
             <ZoomIn className="size-3 shrink-0" />
-            {showText && formatted}
+            {widthPixels >= 50 && formatted}
+            {widthPixels >= 110 && (
+              <span className="font-normal text-white/70">{mode}</span>
+            )}
           </span>
         );
       },
@@ -121,7 +124,7 @@ const ZoomTrack = forwardRef<HTMLDivElement, ZoomTrackProps>(
               totalDuration={totalDuration}
               selectedId={selectedId}
               isToolActive={true}
-              colors="indigo"
+              colors="zoom"
               features={{
                 canDraw: true,
                 canMove: true,

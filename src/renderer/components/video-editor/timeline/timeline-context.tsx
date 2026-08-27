@@ -1,25 +1,20 @@
 import { useRef, useCallback, useMemo } from 'react';
-import { DEFAULT_PIXELS_PER_SECOND } from './timeline-constants';
 import { TimelineContext } from './timeline-context-value';
-import { useTimelineZoom } from './use-timeline-zoom';
+import type { UseTimelineZoomReturn } from './use-timeline-zoom';
 
 interface TimelineProviderProps {
   children: React.ReactNode;
-  initialPixelsPerSecond?: number;
-  onZoomChange?: (pixelsPerSecond: number) => void;
+  zoom: UseTimelineZoomReturn;
+  verticalScrollRef: React.RefObject<HTMLDivElement>;
 }
 
 export function TimelineProvider({
   children,
-  initialPixelsPerSecond = DEFAULT_PIXELS_PER_SECOND,
-  onZoomChange,
+  zoom,
+  verticalScrollRef,
 }: TimelineProviderProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const zoom = useTimelineZoom({
-    initialPixelsPerSecond,
-    onZoomChange,
-  });
+  const rulerScrollRef = useRef<HTMLDivElement>(null);
+  const tracksScrollRef = useRef<HTMLDivElement | null>(null);
 
   const timeToPixels = useCallback(
     (time: number): number => time * zoom.pixelsPerSecond,
@@ -34,7 +29,9 @@ export function TimelineProvider({
   const value = useMemo(
     () => ({
       pixelsPerSecond: zoom.pixelsPerSecond,
-      scrollContainerRef,
+      rulerScrollRef,
+      tracksScrollRef,
+      verticalScrollRef,
       timeToPixels,
       pixelsToTime,
       zoomIn: zoom.zoomIn,
@@ -44,7 +41,7 @@ export function TimelineProvider({
       canZoomIn: zoom.canZoomIn,
       canZoomOut: zoom.canZoomOut,
     }),
-    [zoom, timeToPixels, pixelsToTime]
+    [zoom, verticalScrollRef, timeToPixels, pixelsToTime]
   );
 
   return (

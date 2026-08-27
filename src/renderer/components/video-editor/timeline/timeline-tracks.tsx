@@ -1,9 +1,11 @@
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import Playhead from './playhead';
 import { useTimeline } from './use-timeline';
+import { formatTime } from '../utils';
 import {
   MIN_PIXELS_PER_SECOND,
   MAX_PIXELS_PER_SECOND,
+  TIMELINE_H_PADDING,
 } from './timeline-constants';
 
 const SCRUB_STEP = 1 / 120;
@@ -33,12 +35,34 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
     },
     ref
   ) => {
-    const { pixelsPerSecond, scrollContainerRef, setZoomLevel } = useTimeline();
+    const {
+      pixelsPerSecond,
+      rulerScrollRef,
+      tracksScrollRef,
+      verticalScrollRef,
+      setZoomLevel,
+    } = useTimeline();
     const containerRef = useRef<HTMLDivElement>(null);
     const [isHovering, setIsHovering] = useState(false);
     const lastQuantizedPosRef = useRef<number | null>(null);
     const rafIdRef = useRef<number | null>(null);
     const pendingClientXRef = useRef<number | null>(null);
+    const ghostRef = useRef<HTMLDivElement>(null);
+    const ghostChipRef = useRef<HTMLSpanElement>(null);
+
+    const hideGhost = useCallback(() => {
+      if (ghostRef.current) ghostRef.current.style.display = 'none';
+    }, []);
+
+    const moveGhost = useCallback((positionPixels: number, time: number) => {
+      const ghost = ghostRef.current;
+      if (!ghost) return;
+      ghost.style.display = 'block';
+      ghost.style.left = `${positionPixels}px`;
+      if (ghostChipRef.current) {
+        ghostChipRef.current.textContent = formatTime(time);
+      }
+    }, []);
 
     const actualRef = (ref as React.RefObject<HTMLDivElement>) || containerRef;
     const totalWidth = totalDuration * pixelsPerSecond;
@@ -57,10 +81,11 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
       const rect = container.getBoundingClientRect();
       const scrollLeft = container.scrollLeft;
-      const x = clientX - rect.left + scrollLeft;
+      const x = clientX - rect.left + scrollLeft - TIMELINE_H_PADDING;
 
       if (x > totalWidth) {
         const endPos = totalDuration - 0.01;
+        moveGhost(TIMELINE_H_PADDING + totalWidth, totalDuration);
         if (lastQuantizedPosRef.current !== endPos) {
           lastQuantizedPosRef.current = endPos;
           onPreviewSeek?.(endPos);
@@ -70,12 +95,14 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
       const tlPos = Math.max(0, x / pixelsPerSecond);
       const quantizedPos = Math.floor(tlPos / SCRUB_STEP) * SCRUB_STEP;
+      moveGhost(TIMELINE_H_PADDING + tlPos * pixelsPerSecond, tlPos);
 
       if (lastQuantizedPosRef.current !== quantizedPos) {
         lastQuantizedPosRef.current = quantizedPos;
         onPreviewSeek?.(quantizedPos);
       }
     }, [
+      moveGhost,
       isPlaying,
       isTrimming,
       isHovering,
@@ -97,12 +124,19 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
     const syncScroll = useCallback(
       (scrollLeft: number) => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollLeft = scrollLeft;
+        if (rulerScrollRef.current) {
+          rulerScrollRef.current.scrollLeft = scrollLeft;
         }
       },
-      [scrollContainerRef]
+      [rulerScrollRef]
     );
+
+    useEffect(() => {
+      tracksScrollRef.current = actualRef.current;
+      return () => {
+        tracksScrollRef.current = null;
+      };
+    }, [tracksScrollRef, actualRef]);
 
     const handleMouseMove = useCallback(
       (e: React.MouseEvent) => {
@@ -123,13 +157,18 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
       setIsHovering(false);
       lastQuantizedPosRef.current = null;
       pendingClientXRef.current = null;
+      hideGhost();
       onPreviewSeek?.(null);
 
       if (rafIdRef.current !== null) {
         window.cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
       }
-    }, [onPreviewSeek]);
+    }, [onPreviewSeek, hideGhost]);
+
+    useEffect(() => {
+      if (isPlaying || isTrimming) hideGhost();
+    }, [isPlaying, isTrimming, hideGhost]);
 
     const handleScroll = useCallback(
       (e: React.UIEvent<HTMLDivElement>) => {
@@ -150,7 +189,8 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
           const scrollLeft = container.scrollLeft;
           const mouseTimelineX = mouseX + scrollLeft;
 
-          const timeAtMouse = mouseTimelineX / pixelsPerSecond;
+          const timeAtMouse =
+            (mouseTimelineX - TIMELINE_H_PADDING) / pixelsPerSecond;
 
           const zoomDelta = -e.deltaY * PINCH_ZOOM_SENSITIVITY;
           const newPixelsPerSecond = Math.max(
@@ -161,7 +201,8 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
           setZoomLevel(newPixelsPerSecond);
 
           requestAnimationFrame(() => {
-            const newMouseTimelineX = timeAtMouse * newPixelsPerSecond;
+            const newMouseTimelineX =
+              TIMELINE_H_PADDING + timeAtMouse * newPixelsPerSecond;
             const newScrollLeft = Math.max(0, newMouseTimelineX - mouseX);
             container.scrollLeft = newScrollLeft;
             syncScroll(newScrollLeft);
@@ -193,9 +234,7 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
         if (e.deltaY === 0) return;
 
-        const verticalContainer = container.closest<HTMLElement>(
-          '#timeline-container'
-        );
+        const verticalContainer = verticalScrollRef.current;
         if (!verticalContainer) return;
 
         const maxScrollTop =
@@ -209,7 +248,7 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
           Math.min(maxScrollTop, verticalContainer.scrollTop + e.deltaY)
         );
       },
-      [actualRef, syncScroll, pixelsPerSecond, setZoomLevel]
+      [actualRef, syncScroll, pixelsPerSecond, setZoomLevel, verticalScrollRef]
     );
 
     const playheadPixels = (playheadPosition / 100) * totalWidth;
@@ -223,9 +262,10 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
       const containerWidth = container.clientWidth;
       const scrollLeft = container.scrollLeft;
       const visibleRight = scrollLeft + containerWidth;
+      const playheadX = TIMELINE_H_PADDING + playheadPixels;
 
-      if (playheadPixels > visibleRight - SCROLL_MARGIN) {
-        const newScrollLeft = playheadPixels - containerWidth + SCROLL_MARGIN;
+      if (playheadX > visibleRight - SCROLL_MARGIN) {
+        const newScrollLeft = playheadX - containerWidth + SCROLL_MARGIN;
         container.scrollLeft = newScrollLeft;
         syncScroll(newScrollLeft);
       }
@@ -234,8 +274,7 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
     return (
       <div
         ref={actualRef}
-        data-timeline-tracks
-        className="scrollbar-overlay relative flex w-full flex-col"
+        className="scrollbar-overlay relative flex min-h-full w-full flex-col"
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -243,12 +282,29 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
         onWheel={handleWheel}
       >
         <div
-          className="relative flex flex-col"
-          style={{ width: `${displayWidth}px`, minWidth: '100%' }}
+          className="relative flex flex-col gap-2 pt-4 pb-2"
+          style={{
+            width: `${displayWidth + TIMELINE_H_PADDING * 2}px`,
+            minWidth: '100%',
+            paddingLeft: TIMELINE_H_PADDING,
+            paddingRight: TIMELINE_H_PADDING,
+          }}
         >
           {children}
 
-          <Playhead positionPixels={playheadPixels} />
+          <div
+            ref={ghostRef}
+            className="pointer-events-none absolute top-0 bottom-0 z-10"
+            style={{ display: 'none' }}
+          >
+            <div className="bg-foreground/20 absolute top-4 bottom-0 left-0 w-px" />
+            <span
+              ref={ghostChipRef}
+              className="bg-secondary text-secondary-foreground border-border absolute top-0 left-0 -translate-x-1/2 rounded-md border px-1.5 font-mono text-xs tabular-nums"
+            />
+          </div>
+
+          <Playhead positionPixels={TIMELINE_H_PADDING + playheadPixels} />
         </div>
       </div>
     );

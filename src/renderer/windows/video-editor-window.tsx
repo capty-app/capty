@@ -2,16 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   VideoTitleBar,
   NativeVideoPlayer,
-  TimelineControls,
-  TimelineRuler,
-  TimelineTrack,
-  DrawingTrack,
-  TimelineTracks,
-  TimelineProvider,
-  ZoomTrack,
-  MusicTrack,
-  TrackRow,
-  TRACK_HEIGHT,
+  TimelinePanel,
   EditorSidebar,
   EditorSidebarTabs,
   useVideoHistory,
@@ -32,14 +23,10 @@ import {
   useMusicTracks,
   buildBuiltInMusicTracks,
   useMusicPlayback,
-  useResizableHeight,
   DEFAULT_PIXELS_PER_SECOND,
-  MIN_PIXELS_PER_SECOND,
-  MAX_PIXELS_PER_SECOND,
+  getFitToViewPixelsPerSecond,
 } from '@/renderer/components/video-editor';
 import type { VideoEditorSidebarShortcuts } from '@/types/settings';
-import { Film, PenLine, ZoomIn } from 'lucide-react';
-import { SOURCE_ICONS } from '@/types/music';
 import type { MusicTrack as MusicTrackType } from '@/types/music';
 import {
   DEFAULT_DRAWING_TOOL_SETTINGS,
@@ -264,10 +251,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     setSegmentsWithoutHistory,
     commitSegmentsToHistory,
     totalTimelineDuration: playback.totalTimelineDuration,
-    originalDuration,
-    pixelsPerSecond: timelineZoomState.pixelsPerSecond,
     nativePlayerRef,
-    timelineRef,
     setTimelinePosition: playback.setTimelinePosition,
     onTimelineRangesAdjust: handleTimelineRangesAdjust,
   });
@@ -480,17 +464,21 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
 
   const handleFitToView = useCallback(() => {
     const container = timelineRef.current;
-    const duration = playback.totalTimelineDuration;
+    const duration = Math.max(
+      playback.totalTimelineDuration,
+      displayTimelineDuration
+    );
     if (!container || duration <= 0) return;
 
-    const target = container.clientWidth / duration;
-    const clamped = Math.max(
-      MIN_PIXELS_PER_SECOND,
-      Math.min(MAX_PIXELS_PER_SECOND, target)
+    timelineZoomState.setZoomLevel(
+      getFitToViewPixelsPerSecond(container.clientWidth, duration)
     );
-    timelineZoomState.setZoomLevel(clamped);
     container.scrollLeft = 0;
-  }, [playback.totalTimelineDuration, timelineZoomState]);
+  }, [
+    displayTimelineDuration,
+    playback.totalTimelineDuration,
+    timelineZoomState,
+  ]);
 
   const getTimelinePosition = useCallback(
     () => playback.timelinePosition,
@@ -712,28 +700,6 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     [playback, nativePlayerRef]
   );
 
-  const TIMELINE_SCROLLBAR_HEIGHT = 12;
-  const MIN_TIMELINE_TRACKS = 3;
-  const MAX_TIMELINE_TRACKS = 12;
-  const DEFAULT_TIMELINE_TRACKS = 5;
-  const minTimelineHeight =
-    MIN_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
-  const maxTimelineHeight =
-    MAX_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
-  const defaultTimelineHeight =
-    DEFAULT_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
-
-  const {
-    height: timelineHeight,
-    isResizing: isResizingTimeline,
-    startResize: startTimelineResize,
-  } = useResizableHeight({
-    storageKey: 'video-editor:timeline-height',
-    defaultHeight: defaultTimelineHeight,
-    minHeight: minTimelineHeight,
-    maxHeight: maxTimelineHeight,
-  });
-
   const hasScrubAudioSource =
     editorData.hasEmbeddedAudio ||
     !!editorData.systemAudioPath ||
@@ -827,177 +793,29 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
             />
           </div>
 
-          <div className="bg-card border-border flex shrink-0 flex-col border-t">
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              onMouseDown={startTimelineResize}
-              className={`group flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center ${
-                isResizingTimeline ? 'bg-primary/40' : 'hover:bg-primary/20'
-              }`}
-            >
-              <div
-                className={`h-0.5 w-8 rounded-full transition-colors ${
-                  isResizingTimeline
-                    ? 'bg-primary'
-                    : 'bg-muted-foreground/30 group-hover:bg-muted-foreground/50'
-                }`}
-              />
-            </div>
-            <TimelineControls
-              isPlaying={playback.isPlaying}
-              isCutToolActive={segmentOps.isCutToolActive}
-              hasSelectedSegment={segmentOps.selectedSegmentId !== null}
-              canDeleteSegment={segments.length > 1}
-              timelinePosition={playback.timelinePosition}
-              totalTimelineDuration={playback.totalTimelineDuration}
-              segmentCount={segments.length}
-              selectedSegmentSpeed={segmentOps.selectedSegmentSpeed}
-              onTogglePlayPause={playback.togglePlayPause}
-              onToggleCutTool={segmentOps.toggleCutTool}
-              onDeleteSegment={segmentOps.handleDeleteSegment}
-              onSpeedChange={segmentOps.handleSpeedChange}
-              pixelsPerSecond={timelineZoomState.pixelsPerSecond}
-              onZoomIn={timelineZoomState.zoomIn}
-              onZoomOut={timelineZoomState.zoomOut}
-              onZoomChange={timelineZoomState.setZoomLevel}
-              onFitToView={handleFitToView}
-              canZoomIn={timelineZoomState.canZoomIn}
-              canZoomOut={timelineZoomState.canZoomOut}
-              scrubAudioEnabled={isScrubAudioEnabled}
-              onScrubAudioChange={setIsScrubAudioEnabled}
-              isScrubAudioAvailable={hasScrubAudioSource}
-            />
-
-            <TimelineProvider
-              initialPixelsPerSecond={timelineZoomState.pixelsPerSecond}
-              onZoomChange={timelineZoomState.setZoomLevel}
-            >
-              <TimelineRuler
-                totalDuration={playback.totalTimelineDuration}
-                minDisplayDuration={displayTimelineDuration}
-              />
-
-              <div
-                id="timeline-container"
-                className="scrollbar-overlay-vertical flex items-start overflow-y-auto"
-                style={{ height: timelineHeight }}
-              >
-                <div className="border-border flex w-10 shrink-0 flex-col border-r">
-                  <TrackRow className="flex items-center justify-center">
-                    <Film className="text-muted-foreground size-4" />
-                  </TrackRow>
-                  <TrackRow className="flex items-center justify-center">
-                    <ZoomIn className="text-muted-foreground size-4" />
-                  </TrackRow>
-                  {drawingControl.drawingSegments.length === 0 ? (
-                    <TrackRow className="flex items-center justify-center">
-                      <PenLine className="text-muted-foreground size-4" />
-                    </TrackRow>
-                  ) : (
-                    drawingControl.drawingSegments.map(drawing => (
-                      <TrackRow
-                        key={drawing.id}
-                        className="flex items-center justify-center"
-                      >
-                        <PenLine className="text-muted-foreground size-4" />
-                      </TrackRow>
-                    ))
-                  )}
-                  {musicControl.musicTracks
-                    .filter(track => track.enabled)
-                    .map(track => {
-                      const Icon = SOURCE_ICONS[track.source];
-                      return (
-                        <TrackRow
-                          key={track.id}
-                          className="flex items-center justify-center"
-                        >
-                          <Icon className="text-muted-foreground size-4" />
-                        </TrackRow>
-                      );
-                    })}
-                </div>
-                <TimelineTracks
-                  ref={timelineRef}
-                  totalDuration={playback.totalTimelineDuration}
-                  minDisplayDuration={displayTimelineDuration}
-                  playheadPosition={playback.playheadPosition}
-                  isPlaying={playback.isPlaying}
-                  isTrimming={segmentOps.trimState !== null}
-                  onPreviewSeek={handlePreviewSeek}
-                >
-                  <TimelineTrack
-                    segments={segments}
-                    selectedSegmentId={segmentOps.selectedSegmentId}
-                    isCutToolActive={segmentOps.isCutToolActive}
-                    trimState={segmentOps.trimState}
-                    onSegmentSelect={handleSegmentSelect}
-                    onTrimStart={segmentOps.handleTrimStart}
-                    onCut={segmentOps.handleCut}
-                    onReorder={segmentOps.handleReorderSegment}
-                    onSeek={playback.seekToTimelinePosition}
-                  />
-
-                  <ZoomTrack
-                    segments={zoomControl.zoomSegments}
-                    totalDuration={playback.totalTimelineDuration}
-                    selectedId={zoomControl.selectedZoomId}
-                    onSelect={handleZoomSelect}
-                    onResize={zoomControl.handleUpdateZoom}
-                    onMove={zoomControl.handleUpdateZoom}
-                    onGestureEnd={zoomControl.handleCommitZoomGesture}
-                    onAdd={zoomControl.handleAddZoom}
-                    onUpdateZoomLevel={zoomControl.handleUpdateZoomLevel}
-                    onDelete={zoomControl.handleDeleteZoom}
-                    onApplyToAll={zoomControl.handleApplyZoomToAll}
-                    onDeleteOthers={zoomControl.handleDeleteOtherZooms}
-                  />
-
-                  {drawingControl.drawingSegments.length === 0 ? (
-                    <TrackRow />
-                  ) : (
-                    drawingControl.drawingSegments.map(drawing => (
-                      <DrawingTrack
-                        key={drawing.id}
-                        segment={drawing}
-                        totalDuration={playback.totalTimelineDuration}
-                        selectedId={
-                          drawingControl.selectedDrawingIds.includes(drawing.id)
-                            ? drawing.id
-                            : null
-                        }
-                        onSelect={handleDrawingSelect}
-                        onResize={drawingControl.handleResizeDrawingSegment}
-                        onMove={drawingControl.handleMoveDrawingSegment}
-                        onGestureEnd={drawingControl.handleCommitDrawingGesture}
-                        onDelete={drawingControl.handleDeleteDrawingSegment}
-                      />
-                    ))
-                  )}
-
-                  {musicControl.musicTracks
-                    .filter(track => track.enabled)
-                    .map(track => (
-                      <MusicTrack
-                        key={track.id}
-                        track={track}
-                        totalDuration={playback.totalTimelineDuration}
-                        selectedId={musicControl.selectedMusicTrackId}
-                        onSelect={handleMusicSelect}
-                        onResize={musicControl.handleResizeMusicTrack}
-                        onMove={musicControl.handleMoveMusicTrack}
-                        onGestureEnd={musicControl.handleCommitMusicGesture}
-                        onSpeedChange={(id, speed) =>
-                          musicControl.handleUpdateMusicTrack(id, { speed })
-                        }
-                        onDelete={musicControl.handleRemoveMusicTrack}
-                      />
-                    ))}
-                </TimelineTracks>
-              </div>
-            </TimelineProvider>
-          </div>
+          <TimelinePanel
+            zoom={timelineZoomState}
+            playback={playback}
+            segments={segments}
+            originalDuration={originalDuration}
+            systemAudioPath={editorData.systemAudioPath}
+            micAudioPath={editorData.micAudioPath}
+            segmentOps={segmentOps}
+            zoomControl={zoomControl}
+            drawingControl={drawingControl}
+            musicControl={musicControl}
+            displayTimelineDuration={displayTimelineDuration}
+            timelineRef={timelineRef}
+            onSegmentSelect={handleSegmentSelect}
+            onZoomSelect={handleZoomSelect}
+            onDrawingSelect={handleDrawingSelect}
+            onMusicSelect={handleMusicSelect}
+            onPreviewSeek={handlePreviewSeek}
+            onFitToView={handleFitToView}
+            scrubAudioEnabled={isScrubAudioEnabled}
+            onScrubAudioChange={setIsScrubAudioEnabled}
+            isScrubAudioAvailable={hasScrubAudioSource}
+          />
         </div>
 
         <EditorSidebar

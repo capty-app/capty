@@ -1,5 +1,7 @@
+export { default as TimelinePanel } from './timeline-panel';
 export { default as TimelineControls } from './timeline-controls';
 export { default as TimelineRuler } from './timeline-ruler';
+export { getFitToViewPixelsPerSecond } from './ruler-scale';
 export { default as TimelineTrack } from './timeline-track';
 export { default as TimelineTracks } from './timeline-tracks';
 export { default as Track } from './track';
@@ -12,7 +14,10 @@ export { default as SpeedSelector } from './speed-selector';
 export * from './track-colors';
 export { TimelineProvider } from './timeline-context';
 export { useTimeline } from './use-timeline';
-export { useTimelineZoom } from './use-timeline-zoom';
+export {
+  useTimelineZoom,
+  type UseTimelineZoomReturn,
+} from './use-timeline-zoom';
 export {
   PIXELS_PER_SECOND,
   DEFAULT_PIXELS_PER_SECOND,
