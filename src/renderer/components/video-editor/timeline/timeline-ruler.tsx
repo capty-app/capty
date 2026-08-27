@@ -14,7 +14,7 @@ export default function TimelineRuler({
   totalDuration,
   minDisplayDuration,
 }: TimelineRulerProps) {
-  const { pixelsPerSecond, scrollContainerRef } = useTimeline();
+  const { pixelsPerSecond, rulerScrollRef, tracksScrollRef } = useTimeline();
 
   const marks = useMemo(() => {
     if (totalDuration === 0) return [];
@@ -44,15 +44,11 @@ export default function TimelineRuler({
         )}
       />
       <div
-        ref={scrollContainerRef}
+        ref={rulerScrollRef}
         className="scrollbar-hide relative flex-1 overflow-x-auto overflow-y-hidden"
         onScroll={e => {
-          const scrollLeft = e.currentTarget.scrollLeft;
-          const tracksContainer = document.querySelector(
-            '[data-timeline-tracks]'
-          );
-          if (tracksContainer) {
-            tracksContainer.scrollLeft = scrollLeft;
+          if (tracksScrollRef.current) {
+            tracksScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
           }
         }}
       >

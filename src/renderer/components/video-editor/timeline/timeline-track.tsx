@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { Film } from 'lucide-react';
 import Track from './track';
 import TrackRow from './track-row';
@@ -66,10 +66,13 @@ export default function TimelineTrack({
       ? timelineSegments[timelineSegments.length - 1].endTime
       : 0;
 
+  const rowRef = useRef<HTMLDivElement>(null);
+
   const { reorderState, handleReorderMouseDown } = useReorderDrag({
     segments,
     isCutToolActive,
     pixelsPerSecond,
+    rowRef,
     onReorder,
   });
 
@@ -146,8 +149,9 @@ export default function TimelineTrack({
   const draggingSegmentId = reorderState?.segmentId ?? null;
 
   return (
-    <TrackRow className="relative" data-track-container>
+    <TrackRow className="relative">
       <Track
+        ref={rowRef}
         segments={timelineSegments}
         totalDuration={totalDuration}
         selectedId={selectedSegmentId}

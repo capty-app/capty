@@ -33,7 +33,13 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
     },
     ref
   ) => {
-    const { pixelsPerSecond, scrollContainerRef, setZoomLevel } = useTimeline();
+    const {
+      pixelsPerSecond,
+      rulerScrollRef,
+      tracksScrollRef,
+      verticalScrollRef,
+      setZoomLevel,
+    } = useTimeline();
     const containerRef = useRef<HTMLDivElement>(null);
     const [isHovering, setIsHovering] = useState(false);
     const lastQuantizedPosRef = useRef<number | null>(null);
@@ -97,12 +103,19 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
     const syncScroll = useCallback(
       (scrollLeft: number) => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollLeft = scrollLeft;
+        if (rulerScrollRef.current) {
+          rulerScrollRef.current.scrollLeft = scrollLeft;
         }
       },
-      [scrollContainerRef]
+      [rulerScrollRef]
     );
+
+    useEffect(() => {
+      tracksScrollRef.current = actualRef.current;
+      return () => {
+        tracksScrollRef.current = null;
+      };
+    }, [tracksScrollRef, actualRef]);
 
     const handleMouseMove = useCallback(
       (e: React.MouseEvent) => {
@@ -193,9 +206,7 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
 
         if (e.deltaY === 0) return;
 
-        const verticalContainer = container.closest<HTMLElement>(
-          '#timeline-container'
-        );
+        const verticalContainer = verticalScrollRef.current;
         if (!verticalContainer) return;
 
         const maxScrollTop =
@@ -209,7 +220,7 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
           Math.min(maxScrollTop, verticalContainer.scrollTop + e.deltaY)
         );
       },
-      [actualRef, syncScroll, pixelsPerSecond, setZoomLevel]
+      [actualRef, syncScroll, pixelsPerSecond, setZoomLevel, verticalScrollRef]
     );
 
     const playheadPixels = (playheadPosition / 100) * totalWidth;
@@ -234,7 +245,6 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
     return (
       <div
         ref={actualRef}
-        data-timeline-tracks
         className="scrollbar-overlay relative flex w-full flex-col"
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}

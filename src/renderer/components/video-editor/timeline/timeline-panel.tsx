@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Film, PenLine, ZoomIn } from 'lucide-react';
 import { SOURCE_ICONS } from '@/types/music';
 import type { Segment } from '../types';
@@ -80,6 +80,8 @@ export default function TimelinePanel({
   onScrubAudioChange,
   isScrubAudioAvailable,
 }: TimelinePanelProps) {
+  const verticalScrollRef = useRef<HTMLDivElement>(null);
+
   const {
     height: timelineHeight,
     isResizing: isResizingTimeline,
@@ -214,7 +216,7 @@ export default function TimelinePanel({
         onStartResize={startTimelineResize}
       />
 
-      <TimelineProvider zoom={zoom}>
+      <TimelineProvider zoom={zoom} verticalScrollRef={verticalScrollRef}>
         <TimelineControls
           isPlaying={playback.isPlaying}
           isCutToolActive={segmentOps.isCutToolActive}
@@ -240,7 +242,7 @@ export default function TimelinePanel({
         />
 
         <div
-          id="timeline-container"
+          ref={verticalScrollRef}
           className="scrollbar-overlay-vertical flex items-start overflow-y-auto"
           style={{ height: timelineHeight }}
         >
