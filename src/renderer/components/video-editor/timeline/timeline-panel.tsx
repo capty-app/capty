@@ -20,8 +20,8 @@ import MusicTrack from './music-track';
 import TimelineTrackHeaders, {
   type TrackHeaderItem,
 } from './timeline-track-headers';
+import TimelineResizeGrip from './timeline-resize-grip';
 import TrackRow, { TRACK_HEIGHT } from './track-row';
-import { cn } from '@/renderer/lib/utils';
 
 const TIMELINE_SCROLLBAR_HEIGHT = 12;
 const MIN_TIMELINE_TRACKS = 3;
@@ -209,24 +209,10 @@ export default function TimelinePanel({
 
   return (
     <div className="bg-card border-border flex shrink-0 flex-col border-t">
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        onMouseDown={startTimelineResize}
-        className={cn(
-          'group flex h-1.5 shrink-0 cursor-ns-resize items-center justify-center',
-          isResizingTimeline ? 'bg-primary/40' : 'hover:bg-primary/20'
-        )}
-      >
-        <div
-          className={cn(
-            'h-0.5 w-8 rounded-full transition-colors',
-            isResizingTimeline
-              ? 'bg-primary'
-              : 'bg-muted-foreground/30 group-hover:bg-muted-foreground/50'
-          )}
-        />
-      </div>
+      <TimelineResizeGrip
+        isResizing={isResizingTimeline}
+        onStartResize={startTimelineResize}
+      />
 
       <TimelineProvider zoom={zoom}>
         <TimelineControls
