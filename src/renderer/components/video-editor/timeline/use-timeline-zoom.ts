@@ -11,7 +11,7 @@ interface UseTimelineZoomOptions {
   onZoomChange?: (pixelsPerSecond: number) => void;
 }
 
-interface UseTimelineZoomReturn {
+export interface UseTimelineZoomReturn {
   pixelsPerSecond: number;
   zoomIn: () => void;
   zoomOut: () => void;

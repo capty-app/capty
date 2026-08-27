@@ -12,7 +12,10 @@ export { default as SpeedSelector } from './speed-selector';
 export * from './track-colors';
 export { TimelineProvider } from './timeline-context';
 export { useTimeline } from './use-timeline';
-export { useTimelineZoom } from './use-timeline-zoom';
+export {
+  useTimelineZoom,
+  type UseTimelineZoomReturn,
+} from './use-timeline-zoom';
 export {
   PIXELS_PER_SECOND,
   DEFAULT_PIXELS_PER_SECOND,

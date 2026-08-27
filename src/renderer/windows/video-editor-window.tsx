@@ -869,10 +869,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
               isScrubAudioAvailable={hasScrubAudioSource}
             />
 
-            <TimelineProvider
-              initialPixelsPerSecond={timelineZoomState.pixelsPerSecond}
-              onZoomChange={timelineZoomState.setZoomLevel}
-            >
+            <TimelineProvider zoom={timelineZoomState}>
               <TimelineRuler
                 totalDuration={playback.totalTimelineDuration}
                 minDisplayDuration={displayTimelineDuration}
