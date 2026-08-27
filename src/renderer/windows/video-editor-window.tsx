@@ -794,6 +794,9 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
             zoom={timelineZoomState}
             playback={playback}
             segments={segments}
+            originalDuration={originalDuration}
+            systemAudioPath={editorData.systemAudioPath}
+            micAudioPath={editorData.micAudioPath}
             segmentOps={segmentOps}
             zoomControl={zoomControl}
             drawingControl={drawingControl}

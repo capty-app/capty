@@ -71,6 +71,7 @@ interface DragState {
   initialStart?: number;
   initialEnd?: number;
   bounds?: { min: number; max: number };
+  wasSelected?: boolean;
 }
 
 const MIN_SEGMENT_DURATION = 0.3;
@@ -107,6 +108,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [previewEnd, setPreviewEnd] = useState<number | null>(null);
     const didDragRef = useRef(false);
+    const suppressClickRef = useRef(false);
 
     const actualRef = (ref as React.RefObject<HTMLDivElement>) || trackRef;
 
@@ -160,6 +162,8 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
     const handlePointerDown = useCallback(
       (e: React.PointerEvent) => {
+        if (e.button !== 0) return;
+
         const time = xToTime(e.clientX);
         const clickedSegment = findSegmentAtTime(time);
 
@@ -187,6 +191,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
               bounds: getResizeBounds?.(clickedSegment.id, 'start'),
+              wasSelected: clickedSegment.id === selectedId,
             });
             e.currentTarget.setPointerCapture(e.pointerId);
             onGestureStart?.(e, 'resize-start', clickedSegment.id);
@@ -205,6 +210,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
               bounds: getResizeBounds?.(clickedSegment.id, 'end'),
+              wasSelected: clickedSegment.id === selectedId,
             });
             e.currentTarget.setPointerCapture(e.pointerId);
             onGestureStart?.(e, 'resize-end', clickedSegment.id);
@@ -222,6 +228,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               startTime: time,
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
+              wasSelected: clickedSegment.id === selectedId,
             });
             e.currentTarget.setPointerCapture(e.pointerId);
             onGestureStart?.(e, 'move', clickedSegment.id);
@@ -334,6 +341,18 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
     const handlePointerUp = useCallback(() => {
       if (!dragState) return;
 
+      const isResize =
+        dragState.type === 'resize-start' || dragState.type === 'resize-end';
+
+      if (
+        !didDragRef.current &&
+        dragState.segmentId &&
+        (dragState.type === 'move' || (isResize && selectOnResize))
+      ) {
+        suppressClickRef.current = true;
+        onSelect(dragState.wasSelected ? null : dragState.segmentId);
+      }
+
       if (
         onGestureEnd &&
         (dragState.type === 'move' ||
@@ -367,13 +386,22 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
       setPreviewEnd(null);
       setTimeout(() => {
         didDragRef.current = false;
+        suppressClickRef.current = false;
       }, 0);
-    }, [dragState, previewEnd, totalDuration, onAdd, onGestureEnd]);
+    }, [
+      dragState,
+      previewEnd,
+      totalDuration,
+      onAdd,
+      onGestureEnd,
+      onSelect,
+      selectOnResize,
+    ]);
 
     const handleSegmentClick = useCallback(
       (e: React.MouseEvent, segmentId: string) => {
         e.stopPropagation();
-        if (didDragRef.current) return;
+        if (didDragRef.current || suppressClickRef.current) return;
         onSelect(segmentId === selectedId ? null : segmentId);
       },
       [onSelect, selectedId]
@@ -400,7 +428,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
     return (
       <div
         ref={actualRef}
-        className="relative h-full shrink-0 overflow-visible"
+        className="group/track relative h-full shrink-0 overflow-visible"
         style={{ cursor: getCursor() }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -425,7 +453,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               key={segment.id}
               data-segment={segment.id}
               className={cn(
-                'absolute h-full overflow-hidden rounded',
+                'group/seg absolute h-full overflow-hidden rounded-md',
                 isSelected
                   ? cn(colorConfig.segmentSelected, SELECTED_SEGMENT_CLASS)
                   : colorConfig.segment,
@@ -437,71 +465,87 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               style={{
                 left: `${leftPixels}px`,
                 width: `${widthPixels}px`,
-                minWidth: '4px',
+                minWidth: '8px',
                 cursor: isToolActive && toolCursor ? toolCursor : undefined,
                 opacity: isDragging ? 0.4 : undefined,
               }}
               onClick={e => handleSegmentClick(e, segment.id)}
             >
+              {renderSegmentOverlay &&
+                renderSegmentOverlay(segment, widthPixels, index)}
+
               {!(isToolActive && toolCursor) && onResize && (
                 <>
-                  <div className="group hover:bg-foreground/10 absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors">
-                    <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 left-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
+                  <div className="absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize">
+                    <div
+                      className={cn(
+                        'absolute top-1/2 left-1 h-3.5 w-0.5 -translate-y-1/2 rounded-full bg-black/45 opacity-0 transition-opacity hover:bg-black/70',
+                        'group-hover/seg:opacity-100',
+                        isSelected && 'opacity-100'
+                      )}
+                    />
                   </div>
-                  <div className="group hover:bg-foreground/10 absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors">
-                    <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 right-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
+                  <div className="absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize">
+                    <div
+                      className={cn(
+                        'absolute top-1/2 right-1 h-3.5 w-0.5 -translate-y-1/2 rounded-full bg-black/45 opacity-0 transition-opacity hover:bg-black/70',
+                        'group-hover/seg:opacity-100',
+                        isSelected && 'opacity-100'
+                      )}
+                    />
                   </div>
                 </>
               )}
 
-              {renderSegmentOverlay &&
-                renderSegmentOverlay(segment, widthPixels, index)}
-
               {showDuration && (
-                <div className="absolute bottom-3 left-0 flex w-full items-center justify-center">
-                  <span className="text-foreground/90 text-xs font-medium">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                  <span className="text-xs font-medium text-white/95">
                     {formatDuration(segment.endTime - segment.startTime)}
                   </span>
                 </div>
               )}
 
               {renderLabel && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span className="text-foreground/90 text-xs font-medium">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                  <span className="text-xs font-medium text-white/95">
                     {renderLabel(segment, widthPixels)}
                   </span>
                 </div>
               )}
-
-              {showCutMarkers &&
-                colorConfig.cutBadge &&
-                index < segments.length - 1 && (
-                  <div
-                    className="absolute top-0 -right-3 z-10 flex h-full w-6 items-start justify-center"
-                    style={{ transform: 'translateX(50%)' }}
-                  >
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={cn(
-                          'text-primary-foreground flex size-4 items-center justify-center rounded-full',
-                          colorConfig.cutBadge
-                        )}
-                        style={{ marginTop: '-8px' }}
-                      >
-                        <Scissors className="size-2.5" />
-                      </div>
-                      <div className={cn('h-full w-px', colorConfig.cutLine)} />
-                    </div>
-                  </div>
-                )}
             </div>
           );
         })}
 
+        {showCutMarkers &&
+          colorConfig.cutBadge &&
+          segments.map((segment, index) =>
+            index < segments.length - 1 ? (
+              <div
+                key={`cut-${segment.id}`}
+                className="pointer-events-none absolute top-0 z-10 flex h-full flex-col items-center"
+                style={{
+                  left: `${timeToPixels(segment.endTime)}px`,
+                  transform: 'translateX(-50%)',
+                }}
+              >
+                <div
+                  className={cn(
+                    'flex size-4 shrink-0 items-center justify-center rounded-full',
+                    colorConfig.cutBadge
+                  )}
+                  style={{ marginTop: '-8px' }}
+                >
+                  <Scissors className="size-2.5" />
+                </div>
+                <div className={cn('w-px flex-1', colorConfig.cutLine)} />
+              </div>
+            ) : null
+          )}
+
         {dragState?.type === 'draw' && previewEnd !== null && (
           <div
             className={cn(
-              'absolute h-full overflow-hidden rounded',
+              'absolute h-full overflow-hidden rounded-md',
               colorConfig.preview
             )}
             style={{
@@ -519,7 +563,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
         {segments.length === 0 &&
           !dragState &&
           (emptyText || emptyTextActive) && (
-            <div className="text-muted-foreground/70 pointer-events-none absolute inset-0 flex items-center justify-center text-xs">
+            <div className="border-border text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-dashed text-xs opacity-0 transition-opacity group-hover/track:opacity-100">
               {isToolActive ? emptyTextActive : emptyText}
             </div>
           )}

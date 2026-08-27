@@ -5,4 +5,4 @@ export const ZOOM_STEP = 1.25;
 
 export const PIXELS_PER_SECOND = DEFAULT_PIXELS_PER_SECOND;
 
-export const TRACK_HEADER_WIDTH_CLASS = 'w-12';
+export const TIMELINE_H_PADDING = 12;

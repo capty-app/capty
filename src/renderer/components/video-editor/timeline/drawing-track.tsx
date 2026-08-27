@@ -101,7 +101,7 @@ export default function DrawingTrack({
   ];
 
   const annotation = segment.annotations[0];
-  const colors = getDrawingTrackColors(annotation?.type);
+  const colors = getDrawingTrackColors();
 
   const renderLabel = useCallback(
     (_trackSegment: TrackSegment, widthPixels: number) => {

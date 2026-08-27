@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { Film } from 'lucide-react';
 import Track from './track';
-import TrackRow from './track-row';
+import TrackRow, { VIDEO_TRACK_HEIGHT } from './track-row';
+import TrimPin from './trim-pin';
+import SegmentWaveform from './segment-waveform';
 import type { Segment, TrimState } from '../types';
 import { formatPlaybackSpeed } from '@/types/playback-speed';
 import {
@@ -35,6 +37,8 @@ interface TimelineTrackProps {
   onCut: (cutVideoTime: number) => void;
   onReorder: (segmentId: string, newIndex: number) => void;
   onSeek?: (timelinePosition: number) => void;
+  waveformSrc?: string | null;
+  originalDuration?: number;
 }
 
 interface TrimGesture {
@@ -55,6 +59,8 @@ export default function TimelineTrack({
   onCut,
   onReorder,
   onSeek,
+  waveformSrc,
+  originalDuration = 0,
 }: TimelineTrackProps) {
   const { pixelsPerSecond } = useTimeline();
 
@@ -101,15 +107,16 @@ export default function TimelineTrack({
       const hasSpeedChange = speed !== 1;
       const segmentDuration = getSegmentDuration(segment);
 
-      if (widthPixels < 100) {
-        return <Film className="size-3.5" />;
+      if (widthPixels < 90) {
+        return <Film className="size-3" />;
       }
 
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5">
+          <Film className="size-3 shrink-0" />
           <span>{formatDuration(segmentDuration)}</span>
           {hasSpeedChange && (
-            <span className="bg-foreground/10 rounded px-1.5 py-0.5 text-xs font-medium">
+            <span className="rounded bg-black/25 px-1 text-xs font-semibold">
               {formatPlaybackSpeed(speed)}
             </span>
           )}
@@ -117,6 +124,23 @@ export default function TimelineTrack({
       );
     },
     [segmentMap]
+  );
+
+  const renderWaveform = useCallback(
+    (trackSegment: { id: string }) => {
+      if (!waveformSrc || originalDuration === 0) return null;
+      const segment = segmentMap.get(trackSegment.id);
+      if (!segment) return null;
+
+      return (
+        <SegmentWaveform
+          src={waveformSrc}
+          startFraction={segment.originalStart / originalDuration}
+          endFraction={segment.originalEnd / originalDuration}
+        />
+      );
+    },
+    [segmentMap, waveformSrc, originalDuration]
   );
 
   const handleGestureStart = useCallback(
@@ -192,8 +216,17 @@ export default function TimelineTrack({
 
   const draggingSegmentId = reorderState?.segmentId ?? null;
 
+  const trimmedStart =
+    segments.length > 0
+      ? segments[0].originalStart - segments[0].trimMinStart
+      : 0;
+  const lastSegment = segments[segments.length - 1];
+  const trimmedEnd = lastSegment
+    ? lastSegment.trimMaxEnd - lastSegment.originalEnd
+    : 0;
+
   return (
-    <TrackRow className="relative">
+    <TrackRow className="relative" height={VIDEO_TRACK_HEIGHT}>
       <Track
         ref={rowRef}
         segments={timelineSegments}
@@ -205,6 +238,7 @@ export default function TimelineTrack({
           showCutMarkers: !reorderState,
           toolCursor: SCISSORS_CURSOR,
           renderLabel,
+          renderSegmentOverlay: renderWaveform,
           allowTrackClickOnSegments: true,
           selectOnResize: false,
         }}
@@ -225,6 +259,16 @@ export default function TimelineTrack({
           onSeek?.(time);
         }}
       />
+      {trimmedStart > 0.05 && !reorderState && (
+        <TrimPin seconds={trimmedStart} positionPixels={0} edge="start" />
+      )}
+      {trimmedEnd > 0.05 && !reorderState && (
+        <TrimPin
+          seconds={trimmedEnd}
+          positionPixels={totalDuration * pixelsPerSecond}
+          edge="end"
+        />
+      )}
       {dropIndicatorPixels !== null && (
         <div
           className="bg-primary shadow-primary/60 pointer-events-none absolute top-0 z-30 h-full w-0.5 shadow-[0_0_6px]"

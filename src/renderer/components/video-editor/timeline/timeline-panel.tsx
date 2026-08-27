@@ -1,6 +1,4 @@
 import { useMemo, useRef } from 'react';
-import { Film, PenLine, ZoomIn } from 'lucide-react';
-import { SOURCE_ICONS } from '@/types/music';
 import type { Segment } from '../types';
 import type { usePlaybackControl } from '../hooks/use-playback-control';
 import type { useSegmentOperations } from '../hooks/use-segment-operations';
@@ -17,23 +15,27 @@ import TimelineTrack from './timeline-track';
 import ZoomTrack from './zoom-track';
 import DrawingTrack from './drawing-track';
 import MusicTrack from './music-track';
-import TimelineTrackHeaders, {
-  type TrackHeaderItem,
-} from './timeline-track-headers';
 import TimelineResizeGrip from './timeline-resize-grip';
-import TrackRow, { TRACK_HEIGHT } from './track-row';
+import TrackRow, { TRACK_HEIGHT, VIDEO_TRACK_HEIGHT } from './track-row';
 
 const TIMELINE_SCROLLBAR_HEIGHT = 12;
-const MIN_TIMELINE_TRACKS = 3;
-const MAX_TIMELINE_TRACKS = 12;
-const DEFAULT_TIMELINE_TRACKS = 5;
+const ROW_GAP = 8;
+const TRACKS_TOP_PADDING = 16;
+const TRACKS_BOTTOM_PADDING = 8;
 
-const minTimelineHeight =
-  MIN_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
-const maxTimelineHeight =
-  MAX_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
-const defaultTimelineHeight =
-  DEFAULT_TIMELINE_TRACKS * TRACK_HEIGHT + TIMELINE_SCROLLBAR_HEIGHT;
+function tracksHeightForRows(rowCount: number): number {
+  return (
+    TRACKS_TOP_PADDING +
+    VIDEO_TRACK_HEIGHT +
+    (rowCount - 1) * (TRACK_HEIGHT + ROW_GAP) +
+    TRACKS_BOTTOM_PADDING +
+    TIMELINE_SCROLLBAR_HEIGHT
+  );
+}
+
+const minTimelineHeight = tracksHeightForRows(3);
+const defaultTimelineHeight = tracksHeightForRows(5);
+const maxTimelineHeight = tracksHeightForRows(11);
 
 interface TimelinePanelProps {
   zoom: UseTimelineZoomReturn;
@@ -44,6 +46,9 @@ interface TimelinePanelProps {
   drawingControl: ReturnType<typeof useDrawingSegments>;
   musicControl: ReturnType<typeof useMusicTracks>;
   displayTimelineDuration: number;
+  originalDuration: number;
+  systemAudioPath?: string | null;
+  micAudioPath?: string | null;
   timelineRef: React.RefObject<HTMLDivElement>;
   onSegmentSelect: (id: string | null) => void;
   onZoomSelect: (id: string | null) => void;
@@ -56,7 +61,8 @@ interface TimelinePanelProps {
   isScrubAudioAvailable: boolean;
 }
 
-interface TimelineRow extends TrackHeaderItem {
+interface TimelineRow {
+  key: string;
   node: React.ReactNode;
 }
 
@@ -69,6 +75,9 @@ export default function TimelinePanel({
   drawingControl,
   musicControl,
   displayTimelineDuration,
+  originalDuration,
+  systemAudioPath,
+  micAudioPath,
   timelineRef,
   onSegmentSelect,
   onZoomSelect,
@@ -93,11 +102,11 @@ export default function TimelinePanel({
     maxHeight: maxTimelineHeight,
   });
 
+  const videoWaveformSrc = systemAudioPath ?? micAudioPath ?? null;
+
   const rows = useMemo<TimelineRow[]>(() => {
     const videoRow: TimelineRow = {
       key: 'video',
-      icon: Film,
-      tooltip: 'Video',
       node: (
         <TimelineTrack
           key="video"
@@ -112,14 +121,14 @@ export default function TimelinePanel({
           onCut={segmentOps.handleCut}
           onReorder={segmentOps.handleReorderSegment}
           onSeek={playback.seekToTimelinePosition}
+          waveformSrc={videoWaveformSrc}
+          originalDuration={originalDuration}
         />
       ),
     };
 
     const zoomRow: TimelineRow = {
       key: 'zoom',
-      icon: ZoomIn,
-      tooltip: 'Zoom',
       node: (
         <ZoomTrack
           key="zoom"
@@ -144,15 +153,17 @@ export default function TimelinePanel({
         ? [
             {
               key: 'drawings',
-              icon: PenLine,
-              tooltip: 'Drawings',
-              node: <TrackRow key="drawings" />,
+              node: (
+                <TrackRow key="drawings" className="group relative">
+                  <div className="border-border text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-dashed text-xs opacity-0 transition-opacity group-hover:opacity-100">
+                    Draw on the video to add annotations
+                  </div>
+                </TrackRow>
+              ),
             },
           ]
         : drawingControl.drawingSegments.map(drawing => ({
             key: drawing.id,
-            icon: PenLine,
-            tooltip: 'Drawing',
             node: (
               <DrawingTrack
                 key={drawing.id}
@@ -176,8 +187,6 @@ export default function TimelinePanel({
       .filter(track => track.enabled)
       .map(track => ({
         key: track.id,
-        icon: SOURCE_ICONS[track.source],
-        tooltip: track.name,
         node: (
           <MusicTrack
             key={track.id}
@@ -192,6 +201,13 @@ export default function TimelinePanel({
               musicControl.handleUpdateMusicTrack(id, { speed })
             }
             onDelete={musicControl.handleRemoveMusicTrack}
+            waveformSrc={
+              track.source === 'system'
+                ? systemAudioPath
+                : track.source === 'mic'
+                  ? micAudioPath
+                  : null
+            }
           />
         ),
       }));
@@ -209,6 +225,10 @@ export default function TimelinePanel({
     onZoomSelect,
     onDrawingSelect,
     onMusicSelect,
+    videoWaveformSrc,
+    originalDuration,
+    systemAudioPath,
+    micAudioPath,
   ]);
 
   return (
@@ -232,6 +252,17 @@ export default function TimelinePanel({
           onToggleCutTool={segmentOps.toggleCutTool}
           onDeleteSegment={segmentOps.handleDeleteSegment}
           onSpeedChange={segmentOps.handleSpeedChange}
+          onSeekRelative={delta =>
+            playback.seekToTimelinePosition(
+              Math.max(
+                0,
+                Math.min(
+                  playback.totalTimelineDuration,
+                  playback.timelinePosition + delta
+                )
+              )
+            )
+          }
           onFitToView={onFitToView}
           scrubAudioEnabled={scrubAudioEnabled}
           onScrubAudioChange={onScrubAudioChange}
@@ -248,7 +279,6 @@ export default function TimelinePanel({
           className="scrollbar-overlay-vertical flex items-start overflow-y-auto"
           style={{ height: timelineHeight }}
         >
-          <TimelineTrackHeaders headers={rows} />
           <TimelineTracks
             ref={timelineRef}
             totalDuration={playback.totalTimelineDuration}

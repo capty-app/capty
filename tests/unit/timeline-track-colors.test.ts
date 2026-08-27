@@ -1,22 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   TRACK_COLORS,
-  DRAWING_TRACK_COLORS,
+  DRAW_TRACK_COLORS,
   SELECTED_SEGMENT_CLASS,
   getDrawingTrackColors,
 } from '@/renderer/components/video-editor/timeline/track-colors';
-
-const DRAWING_TYPES = [
-  'pen',
-  'highlight',
-  'rectangle',
-  'circle',
-  'line',
-  'arrow',
-  'text',
-  'number',
-  'redact',
-];
 
 describe('TRACK_COLORS', () => {
   it('defines the three track types', () => {
@@ -38,45 +26,29 @@ describe('TRACK_COLORS', () => {
     expect(TRACK_COLORS.music.cutBadge).toBeUndefined();
   });
 
-  it('references its own hue token in every class string', () => {
+  it('fills each track with its own solid hue token', () => {
     for (const [key, colors] of Object.entries(TRACK_COLORS)) {
-      expect(colors.segment).toContain(`track-${key}`);
-      expect(colors.segmentSelected).toContain(`track-${key}`);
+      expect(colors.segment).toContain(`bg-track-${key}`);
       expect(colors.preview).toContain(`track-${key}`);
     }
   });
 });
 
-describe('DRAWING_TRACK_COLORS', () => {
-  it('defines all nine drawing types', () => {
-    expect(Object.keys(DRAWING_TRACK_COLORS)).toEqual(DRAWING_TYPES);
+describe('DRAW_TRACK_COLORS', () => {
+  it('uses the single draw hue token', () => {
+    expect(DRAW_TRACK_COLORS.segment).toContain('bg-track-draw');
+    expect(DRAW_TRACK_COLORS.segmentSelected).toBeTruthy();
+    expect(DRAW_TRACK_COLORS.preview).toContain('track-draw');
   });
 
-  it('references its own hue token in every class string', () => {
-    for (const [key, colors] of Object.entries(DRAWING_TRACK_COLORS)) {
-      expect(colors.segment).toContain(`track-draw-${key}`);
-      expect(colors.segmentSelected).toContain(`track-draw-${key}`);
-      expect(colors.preview).toContain(`track-draw-${key}`);
-    }
-  });
-});
-
-describe('getDrawingTrackColors', () => {
-  it('returns the matching entry for a known type', () => {
-    expect(getDrawingTrackColors('rectangle')).toBe(
-      DRAWING_TRACK_COLORS.rectangle
-    );
-  });
-
-  it('falls back to pen for unknown or missing types', () => {
-    expect(getDrawingTrackColors(undefined)).toBe(DRAWING_TRACK_COLORS.pen);
-    expect(getDrawingTrackColors('unknown')).toBe(DRAWING_TRACK_COLORS.pen);
+  it('is returned for every drawing type', () => {
+    expect(getDrawingTrackColors()).toBe(DRAW_TRACK_COLORS);
   });
 });
 
 describe('SELECTED_SEGMENT_CLASS', () => {
-  it('uses the primary token for ring and glow', () => {
-    expect(SELECTED_SEGMENT_CLASS).toContain('ring-primary');
-    expect(SELECTED_SEGMENT_CLASS).toContain('shadow-primary');
+  it('uses the foreground token for ring and glow', () => {
+    expect(SELECTED_SEGMENT_CLASS).toContain('ring-foreground');
+    expect(SELECTED_SEGMENT_CLASS).toContain('shadow-foreground');
   });
 });

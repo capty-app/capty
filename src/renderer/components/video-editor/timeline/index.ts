@@ -1,6 +1,5 @@
 export { default as TimelinePanel } from './timeline-panel';
 export { default as TimelineControls } from './timeline-controls';
-export { default as TimelineTrackHeaders } from './timeline-track-headers';
 export { default as TimelineRuler } from './timeline-ruler';
 export { default as TimelineTrack } from './timeline-track';
 export { default as TimelineTracks } from './timeline-tracks';

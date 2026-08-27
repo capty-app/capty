@@ -18,6 +18,7 @@ import {
 } from '@/renderer/components/ui/context-menu';
 import Track, { type TrackSegment } from './track';
 import TrackRow from './track-row';
+import SegmentWaveform from './segment-waveform';
 import type { TrackColors } from './track-colors';
 import { TRACK_COLORS } from './track-colors';
 import { formatDuration } from '../utils';
@@ -32,13 +33,14 @@ interface MusicTrackProps {
   onGestureEnd?: () => void;
   onSpeedChange: (id: string, speed: number) => void;
   onDelete: (id: string) => void;
+  waveformSrc?: string | null;
 }
 
 const DISABLED_COLORS: TrackColors = {
-  segment: 'border border-muted-foreground/40 bg-muted-foreground/20',
-  segmentSelected: 'border border-muted-foreground/40 bg-muted-foreground/30',
+  segment: 'bg-muted-foreground/50',
+  segmentSelected: 'bg-muted-foreground/50',
   preview:
-    'border-2 border-dashed border-muted-foreground/40 bg-muted-foreground/20',
+    'border-2 border-dashed border-muted-foreground/50 bg-muted-foreground/30',
 };
 
 export default function MusicTrack({
@@ -51,6 +53,7 @@ export default function MusicTrack({
   onGestureEnd,
   onSpeedChange,
   onDelete,
+  waveformSrc,
 }: MusicTrackProps) {
   const segments: TrackSegment[] = [
     {
@@ -62,6 +65,22 @@ export default function MusicTrack({
 
   const Icon = SOURCE_ICONS[track.source];
   const colors = track.enabled ? TRACK_COLORS.music : DISABLED_COLORS;
+
+  const renderWaveform = useCallback(() => {
+    if (!waveformSrc) return null;
+
+    const sourceLength = (track.endTime - track.startTime) * (track.speed || 1);
+    const fileDuration = track.trimStart + sourceLength + track.trimEnd;
+    if (fileDuration <= 0) return null;
+
+    return (
+      <SegmentWaveform
+        src={waveformSrc}
+        startFraction={track.trimStart / fileDuration}
+        endFraction={(track.trimStart + sourceLength) / fileDuration}
+      />
+    );
+  }, [waveformSrc, track]);
 
   const renderLabel = useCallback(
     (_segment: TrackSegment, widthPixels: number) => {
@@ -84,7 +103,7 @@ export default function MusicTrack({
             </span>
           )}
           {hasSpeedChange && widthPixels >= 100 && (
-            <span className="bg-foreground/10 rounded px-1 py-0.5 text-xs font-medium">
+            <span className="rounded bg-black/25 px-1 text-xs font-semibold">
               {formatPlaybackSpeed(track.speed)}
             </span>
           )}
@@ -120,6 +139,7 @@ export default function MusicTrack({
             features={{
               canMove: true,
               renderLabel,
+              renderSegmentOverlay: renderWaveform,
             }}
             onSelect={onSelect}
             onResize={onResize}
