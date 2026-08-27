@@ -32,6 +32,7 @@ export interface TrackFeatures {
     index: number
   ) => React.ReactNode;
   allowTrackClickOnSegments?: boolean;
+  selectOnResize?: boolean;
 }
 
 interface TrackProps {
@@ -48,10 +49,18 @@ interface TrackProps {
   onResize?: (id: string, startTime: number, endTime: number) => void;
   onMove?: (id: string, startTime: number, endTime: number) => void;
   onAdd?: (startTime: number, endTime: number) => void;
+  onGestureStart?: (
+    e: React.PointerEvent,
+    type: 'move' | 'resize-start' | 'resize-end',
+    segmentId: string
+  ) => void;
   onGestureEnd?: (type: 'move' | 'resize-start' | 'resize-end') => void;
   onTrackClick?: (time: number) => void;
-  onTrackHover?: (time: number) => void;
   onSegmentMouseDown?: (e: React.MouseEvent, segmentId: string) => void;
+  getResizeBounds?: (
+    segmentId: string,
+    edge: 'start' | 'end'
+  ) => { min: number; max: number };
 }
 
 interface DragState {
@@ -61,13 +70,13 @@ interface DragState {
   startTime: number;
   initialStart?: number;
   initialEnd?: number;
+  bounds?: { min: number; max: number };
 }
 
 const MIN_SEGMENT_DURATION = 0.3;
 const DEFAULT_SEGMENT_DURATION = 3;
 const CLICK_THRESHOLD = 0.1;
-const EDGE_RESIZE_RATIO = 0.15;
-const MAX_EDGE_THRESHOLD = 0.3;
+const EDGE_HANDLE_PIXELS = 12;
 
 const Track = forwardRef<HTMLDivElement, TrackProps>(
   (
@@ -85,10 +94,11 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
       onResize,
       onMove,
       onAdd,
+      onGestureStart,
       onGestureEnd,
       onTrackClick,
-      onTrackHover,
       onSegmentMouseDown,
+      getResizeBounds,
     },
     ref
   ) => {
@@ -96,8 +106,6 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
     const trackRef = useRef<HTMLDivElement>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [previewEnd, setPreviewEnd] = useState<number | null>(null);
-    const [isHovering, setIsHovering] = useState(false);
-    const lastHoverTimeRef = useRef<number | null>(null);
     const didDragRef = useRef(false);
 
     const actualRef = (ref as React.RefObject<HTMLDivElement>) || trackRef;
@@ -117,17 +125,23 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
       renderLabel,
       renderSegmentOverlay,
       allowTrackClickOnSegments = false,
+      selectOnResize = true,
     } = features;
 
-    const xToTime = useCallback(
+    const rawXToTime = useCallback(
       (clientX: number): number => {
         const track = actualRef.current;
         if (!track) return 0;
         const rect = track.getBoundingClientRect();
-        const x = clientX - rect.left;
-        return Math.max(0, Math.min(totalDuration, x / pixelsPerSecond));
+        return (clientX - rect.left) / pixelsPerSecond;
       },
-      [actualRef, pixelsPerSecond, totalDuration]
+      [actualRef, pixelsPerSecond]
+    );
+
+    const xToTime = useCallback(
+      (clientX: number): number =>
+        Math.max(0, Math.min(totalDuration, rawXToTime(clientX))),
+      [rawXToTime, totalDuration]
     );
 
     const timeToPixels = useCallback(
@@ -144,8 +158,8 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
       [segments]
     );
 
-    const handleMouseDown = useCallback(
-      (e: React.MouseEvent) => {
+    const handlePointerDown = useCallback(
+      (e: React.PointerEvent) => {
         const time = xToTime(e.clientX);
         const clickedSegment = findSegmentAtTime(time);
 
@@ -160,8 +174,8 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
           const segmentDuration =
             clickedSegment.endTime - clickedSegment.startTime;
           const edgeThreshold = Math.min(
-            segmentDuration * EDGE_RESIZE_RATIO,
-            MAX_EDGE_THRESHOLD
+            EDGE_HANDLE_PIXELS / pixelsPerSecond,
+            segmentDuration / 3
           );
 
           if (onResize && time - clickedSegment.startTime < edgeThreshold) {
@@ -172,8 +186,11 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               startTime: time,
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
+              bounds: getResizeBounds?.(clickedSegment.id, 'start'),
             });
-            if (clickedSegment.id !== selectedId) {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            onGestureStart?.(e, 'resize-start', clickedSegment.id);
+            if (selectOnResize && clickedSegment.id !== selectedId) {
               onSelect(clickedSegment.id);
             }
             return;
@@ -187,8 +204,11 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               startTime: time,
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
+              bounds: getResizeBounds?.(clickedSegment.id, 'end'),
             });
-            if (clickedSegment.id !== selectedId) {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            onGestureStart?.(e, 'resize-end', clickedSegment.id);
+            if (selectOnResize && clickedSegment.id !== selectedId) {
               onSelect(clickedSegment.id);
             }
             return;
@@ -203,6 +223,8 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
               initialStart: clickedSegment.startTime,
               initialEnd: clickedSegment.endTime,
             });
+            e.currentTarget.setPointerCapture(e.pointerId);
+            onGestureStart?.(e, 'move', clickedSegment.id);
             return;
           }
 
@@ -216,6 +238,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
             startX: e.clientX,
             startTime: time,
           });
+          e.currentTarget.setPointerCapture(e.pointerId);
           setPreviewEnd(time);
           onSelect(null);
         } else if (onTrackClick && isToolActive) {
@@ -225,9 +248,11 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
       [
         xToTime,
         findSegmentAtTime,
+        pixelsPerSecond,
         onResize,
         onSelect,
         selectedId,
+        selectOnResize,
         canMove,
         isToolActive,
         onMove,
@@ -236,22 +261,16 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
         onTrackClick,
         allowTrackClickOnSegments,
         onSegmentMouseDown,
+        onGestureStart,
+        getResizeBounds,
       ]
     );
 
-    const handleMouseMove = useCallback(
-      (e: React.MouseEvent) => {
-        const currentTime = xToTime(e.clientX);
-
-        if (!dragState && isHovering && onTrackHover && !isToolActive) {
-          if (lastHoverTimeRef.current !== currentTime) {
-            lastHoverTimeRef.current = currentTime;
-            onTrackHover(currentTime);
-          }
-          return;
-        }
-
+    const handlePointerMove = useCallback(
+      (e: React.PointerEvent) => {
         if (!dragState) return;
+
+        const currentTime = xToTime(e.clientX);
 
         if (dragState.type === 'draw') {
           setPreviewEnd(currentTime);
@@ -282,37 +301,37 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
           onMove(dragState.segmentId, newStart, newEnd);
         } else if (dragState.type === 'resize-start' && onResize) {
-          const newStart = Math.max(
-            0,
-            Math.min(dragState.initialEnd! - MIN_SEGMENT_DURATION, currentTime)
-          );
+          const bounds = dragState.bounds;
+          const newStart = bounds
+            ? Math.max(bounds.min, Math.min(bounds.max, rawXToTime(e.clientX)))
+            : Math.max(
+                0,
+                Math.min(
+                  dragState.initialEnd! - MIN_SEGMENT_DURATION,
+                  currentTime
+                )
+              );
           didDragRef.current = true;
           onResize(dragState.segmentId, newStart, dragState.initialEnd!);
         } else if (dragState.type === 'resize-end' && onResize) {
-          const newEnd = Math.min(
-            totalDuration,
-            Math.max(
-              dragState.initialStart! + MIN_SEGMENT_DURATION,
-              currentTime
-            )
-          );
+          const bounds = dragState.bounds;
+          const newEnd = bounds
+            ? Math.max(bounds.min, Math.min(bounds.max, rawXToTime(e.clientX)))
+            : Math.min(
+                totalDuration,
+                Math.max(
+                  dragState.initialStart! + MIN_SEGMENT_DURATION,
+                  currentTime
+                )
+              );
           didDragRef.current = true;
           onResize(dragState.segmentId, dragState.initialStart!, newEnd);
         }
       },
-      [
-        xToTime,
-        dragState,
-        isHovering,
-        onTrackHover,
-        isToolActive,
-        onMove,
-        onResize,
-        totalDuration,
-      ]
+      [xToTime, rawXToTime, dragState, onMove, onResize, totalDuration]
     );
 
-    const handleMouseUp = useCallback(() => {
+    const handlePointerUp = useCallback(() => {
       if (!dragState) return;
 
       if (
@@ -383,15 +402,10 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
         ref={actualRef}
         className="relative h-full shrink-0 overflow-visible"
         style={{ cursor: getCursor() }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={() => {
-          handleMouseUp();
-          setIsHovering(false);
-          lastHoverTimeRef.current = null;
-        }}
-        onMouseEnter={() => setIsHovering(true)}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         {segments.map((segment, index) => {
           const GAP = 2;

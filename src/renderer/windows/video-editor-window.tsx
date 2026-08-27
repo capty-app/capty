@@ -252,10 +252,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     setSegmentsWithoutHistory,
     commitSegmentsToHistory,
     totalTimelineDuration: playback.totalTimelineDuration,
-    originalDuration,
-    pixelsPerSecond: timelineZoomState.pixelsPerSecond,
     nativePlayerRef,
-    timelineRef,
     setTimelinePosition: playback.setTimelinePosition,
     onTimelineRangesAdjust: handleTimelineRangesAdjust,
   });

@@ -107,6 +107,8 @@ export default function TimelinePanel({
           trimState={segmentOps.trimState}
           onSegmentSelect={onSegmentSelect}
           onTrimStart={segmentOps.handleTrimStart}
+          onTrimResize={segmentOps.handleTrimResize}
+          onTrimEnd={segmentOps.handleTrimEnd}
           onCut={segmentOps.handleCut}
           onReorder={segmentOps.handleReorderSegment}
           onSeek={playback.seekToTimelinePosition}

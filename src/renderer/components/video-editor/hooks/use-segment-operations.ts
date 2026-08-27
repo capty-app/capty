@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Segment, TrimState, NativeVideoPlayerHandle } from '../types';
 import { getSegmentDuration } from '../utils';
+import { applyTrimDelta } from '../timeline/trim-math';
 
 interface UseSegmentOperationsProps {
   segments: Segment[];
@@ -10,10 +11,7 @@ interface UseSegmentOperationsProps {
   ) => void;
   commitSegmentsToHistory: () => void;
   totalTimelineDuration: number;
-  originalDuration: number;
-  pixelsPerSecond: number;
   nativePlayerRef: React.RefObject<NativeVideoPlayerHandle | null>;
-  timelineRef: React.RefObject<HTMLDivElement | null>;
   setTimelinePosition: (pos: number) => void;
   onTimelineRangesAdjust: (
     segmentIndex: number,
@@ -40,6 +38,12 @@ interface UseSegmentOperationsReturn {
     segmentId: string,
     edge: 'start' | 'end'
   ) => void;
+  handleTrimResize: (
+    segmentId: string,
+    edge: 'start' | 'end',
+    deltaTlTime: number
+  ) => void;
+  handleTrimEnd: () => void;
   handleCut: (cutVideoTime: number) => void;
   handleSpeedChange: (speed: number) => void;
   handleReorderSegment: (segmentId: string, newIndex: number) => void;
@@ -52,10 +56,7 @@ export function useSegmentOperations({
   setSegmentsWithoutHistory,
   commitSegmentsToHistory,
   totalTimelineDuration,
-  originalDuration,
-  pixelsPerSecond,
   nativePlayerRef,
-  timelineRef,
   setTimelinePosition,
   onTimelineRangesAdjust,
 }: UseSegmentOperationsProps): UseSegmentOperationsReturn {
@@ -99,6 +100,8 @@ export function useSegmentOperations({
     nativePlayerRef,
   ]);
 
+  const trimInitialValueRef = useRef<number | null>(null);
+
   const handleTrimStart = useCallback(
     (e: React.MouseEvent, segmentId: string, edge: 'start' | 'end') => {
       e.stopPropagation();
@@ -107,73 +110,36 @@ export function useSegmentOperations({
       const segment = segments.find(s => s.id === segmentId);
       if (!segment) return;
 
-      const scrollLeft = timelineRef.current?.scrollLeft ?? 0;
-
-      setTrimState({
-        segmentId,
-        edge,
-        initialMouseX: e.clientX,
-        initialValue:
-          edge === 'start' ? segment.originalStart : segment.originalEnd,
-        initialTimelineDuration: totalTimelineDuration,
-        initialScrollLeft: scrollLeft,
-      });
+      trimInitialValueRef.current =
+        edge === 'start' ? segment.originalStart : segment.originalEnd;
+      setTrimState({ segmentId, edge });
     },
-    [segments, totalTimelineDuration, timelineRef]
+    [segments]
   );
 
-  const handleTrimMove = useCallback(
-    (e: MouseEvent) => {
-      if (!trimState || !timelineRef.current || originalDuration === 0) return;
-
-      const timeline = timelineRef.current;
-      const currentScrollLeft = timeline.scrollLeft;
-      const scrollDelta = currentScrollLeft - trimState.initialScrollLeft;
-      const deltaX = e.clientX - trimState.initialMouseX + scrollDelta;
+  const handleTrimResize = useCallback(
+    (segmentId: string, edge: 'start' | 'end', deltaTlTime: number) => {
+      const initialValue = trimInitialValueRef.current;
+      if (initialValue === null) return;
 
       setSegmentsWithoutHistory(prevSegments => {
         const segmentIndex = prevSegments.findIndex(
-          (s: Segment) => s.id === trimState.segmentId
+          (s: Segment) => s.id === segmentId
         );
         if (segmentIndex === -1) return prevSegments;
 
         const seg = prevSegments[segmentIndex];
-        const speed = seg.speed ?? 1;
-        const deltaTime = (deltaX / pixelsPerSecond) * speed;
-        const minDuration = 0.5;
+        const newValue = applyTrimDelta(edge, seg, initialValue, deltaTlTime);
 
-        if (trimState.edge === 'start') {
-          const newStart = Math.max(
-            seg.trimMinStart,
-            Math.min(
-              seg.originalEnd - minDuration,
-              trimState.initialValue + deltaTime
-            )
-          );
-          return prevSegments.map((s: Segment, i: number) =>
-            i === segmentIndex ? { ...s, originalStart: newStart } : s
-          );
-        } else {
-          const newEnd = Math.min(
-            seg.trimMaxEnd,
-            Math.max(
-              seg.originalStart + minDuration,
-              trimState.initialValue + deltaTime
-            )
-          );
-          return prevSegments.map((s: Segment, i: number) =>
-            i === segmentIndex ? { ...s, originalEnd: newEnd } : s
-          );
-        }
+        return prevSegments.map((s: Segment, i: number) => {
+          if (i !== segmentIndex) return s;
+          return edge === 'start'
+            ? { ...s, originalStart: newValue }
+            : { ...s, originalEnd: newValue };
+        });
       });
     },
-    [
-      trimState,
-      originalDuration,
-      pixelsPerSecond,
-      setSegmentsWithoutHistory,
-      timelineRef,
-    ]
+    [setSegmentsWithoutHistory]
   );
 
   const handleTrimEnd = useCallback(() => {
@@ -189,23 +155,9 @@ export function useSegmentOperations({
       nativePlayerRef.current?.seekTo(timelinePos);
     }
     commitSegmentsToHistory();
+    trimInitialValueRef.current = null;
     setTrimState(null);
   }, [trimState, segments, commitSegmentsToHistory, nativePlayerRef]);
-
-  useEffect(() => {
-    if (trimState) {
-      const handleMouseMove = (e: MouseEvent) => handleTrimMove(e);
-      const handleMouseUp = () => handleTrimEnd();
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [trimState, handleTrimMove, handleTrimEnd]);
 
   const handleCut = useCallback(
     (cutVideoTime: number) => {
@@ -331,6 +283,8 @@ export function useSegmentOperations({
     handleSegmentSelect,
     handleDeleteSegment,
     handleTrimStart,
+    handleTrimResize,
+    handleTrimEnd,
     handleCut,
     handleSpeedChange,
     handleReorderSegment,
