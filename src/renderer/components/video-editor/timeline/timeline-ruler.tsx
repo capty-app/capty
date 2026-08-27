@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { formatTime } from '../utils';
 import { useTimeline } from './use-timeline';
 import { getMarkInterval } from './ruler-scale';
+import { TRACK_HEADER_WIDTH_CLASS } from './timeline-constants';
+import { cn } from '@/renderer/lib/utils';
 
 interface TimelineRulerProps {
   totalDuration: number;
@@ -35,7 +37,12 @@ export default function TimelineRuler({
 
   return (
     <div className="flex h-7 shrink-0 border-b pt-1">
-      <div className="w-10 shrink-0" />
+      <div
+        className={cn(
+          'border-border shrink-0 border-r',
+          TRACK_HEADER_WIDTH_CLASS
+        )}
+      />
       <div
         ref={scrollContainerRef}
         className="scrollbar-hide relative flex-1 overflow-x-auto overflow-y-hidden"

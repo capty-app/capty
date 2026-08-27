@@ -19,6 +19,7 @@ import {
 } from '@/renderer/components/ui/tooltip';
 import { formatTime } from '../utils';
 import SpeedSelector from './speed-selector';
+import { useTimeline } from './use-timeline';
 import {
   MIN_PIXELS_PER_SECOND,
   MAX_PIXELS_PER_SECOND,
@@ -37,13 +38,7 @@ interface TimelineControlsProps {
   onToggleCutTool: () => void;
   onDeleteSegment: () => void;
   onSpeedChange: (speed: number) => void;
-  pixelsPerSecond: number;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onZoomChange: (value: number) => void;
   onFitToView: () => void;
-  canZoomIn: boolean;
-  canZoomOut: boolean;
   scrubAudioEnabled: boolean;
   onScrubAudioChange: (enabled: boolean) => void;
   isScrubAudioAvailable: boolean;
@@ -62,17 +57,20 @@ export default function TimelineControls({
   onToggleCutTool,
   onDeleteSegment,
   onSpeedChange,
-  pixelsPerSecond,
-  onZoomIn,
-  onZoomOut,
-  onZoomChange,
   onFitToView,
-  canZoomIn,
-  canZoomOut,
   scrubAudioEnabled,
   onScrubAudioChange,
   isScrubAudioAvailable,
 }: TimelineControlsProps) {
+  const {
+    pixelsPerSecond,
+    zoomIn,
+    zoomOut,
+    setZoomLevel,
+    canZoomIn,
+    canZoomOut,
+  } = useTimeline();
+
   return (
     <div className="flex items-center border-b px-1 py-1">
       <Tooltip>
@@ -154,7 +152,7 @@ export default function TimelineControls({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              onClick={onZoomOut}
+              onClick={zoomOut}
               variant="ghost"
               size="icon"
               className="size-7"
@@ -171,14 +169,14 @@ export default function TimelineControls({
           min={MIN_PIXELS_PER_SECOND}
           max={MAX_PIXELS_PER_SECOND}
           step={1}
-          onValueChange={([value]) => onZoomChange(value)}
+          onValueChange={([value]) => setZoomLevel(value)}
           className="w-24"
         />
 
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              onClick={onZoomIn}
+              onClick={zoomIn}
               variant="ghost"
               size="icon"
               className="size-7"

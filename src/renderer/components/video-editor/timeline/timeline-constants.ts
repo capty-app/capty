@@ -4,3 +4,5 @@ export const MAX_PIXELS_PER_SECOND = 500;
 export const ZOOM_STEP = 1.25;
 
 export const PIXELS_PER_SECOND = DEFAULT_PIXELS_PER_SECOND;
+
+export const TRACK_HEADER_WIDTH_CLASS = 'w-12';
