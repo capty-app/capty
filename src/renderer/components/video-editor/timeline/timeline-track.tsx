@@ -83,14 +83,14 @@ export default function TimelineTrack({
       const segmentDuration = getSegmentDuration(segment);
 
       if (widthPixels < 100) {
-        return <Film className="size-3.5 text-white" />;
+        return <Film className="size-3.5" />;
       }
 
       return (
         <span className="inline-flex items-center gap-2">
           <span>{formatDuration(segmentDuration)}</span>
           {hasSpeedChange && (
-            <span className="rounded bg-white/20 px-1.5 py-0.5 text-xs font-medium text-white">
+            <span className="bg-foreground/10 rounded px-1.5 py-0.5 text-xs font-medium">
               {formatPlaybackSpeed(speed)}
             </span>
           )}
@@ -110,16 +110,16 @@ export default function TimelineTrack({
       return (
         <>
           <div
-            className="absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20"
+            className="group hover:bg-foreground/10 absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors"
             onMouseDown={e => onTrimStart(e, segment.id, 'start')}
           >
-            <div className="absolute top-1/2 left-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
+            <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 left-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
           </div>
           <div
-            className="absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20"
+            className="group hover:bg-foreground/10 absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors"
             onMouseDown={e => onTrimStart(e, segment.id, 'end')}
           >
-            <div className="absolute top-1/2 right-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
+            <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 right-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
           </div>
         </>
       );
@@ -152,7 +152,7 @@ export default function TimelineTrack({
         totalDuration={totalDuration}
         selectedId={selectedSegmentId}
         isToolActive={isCutToolActive}
-        colors="orange"
+        colors="video"
         features={{
           showCutMarkers: !reorderState,
           toolCursor: SCISSORS_CURSOR,
@@ -175,7 +175,7 @@ export default function TimelineTrack({
       />
       {dropIndicatorPixels !== null && (
         <div
-          className="pointer-events-none absolute top-0 z-30 h-full w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,0.6)]"
+          className="bg-primary shadow-primary/60 pointer-events-none absolute top-0 z-30 h-full w-0.5 shadow-[0_0_6px]"
           style={{ left: `${dropIndicatorPixels}px` }}
         />
       )}

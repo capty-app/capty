@@ -2,8 +2,13 @@ import { forwardRef, useState, useCallback, useRef } from 'react';
 import { Scissors } from 'lucide-react';
 import Playhead from './playhead';
 import { useTimeline } from './use-timeline';
-import { TRACK_COLORS, type TrackColors } from './track-colors';
+import {
+  TRACK_COLORS,
+  SELECTED_SEGMENT_CLASS,
+  type TrackColors,
+} from './track-colors';
 import { formatDuration } from '../utils';
+import { cn } from '@/renderer/lib/utils';
 
 export interface TrackSegment {
   id: string;
@@ -400,34 +405,37 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
           const widthPixels = Math.max(2, rawWidth - gapOffset);
           const isSelected = segment.id === selectedId;
           const isDragging = segment.id === draggingSegmentId;
-          const gradient = isSelected
-            ? colorConfig.selectedGradient
-            : colorConfig.gradient;
 
           return (
             <div
               key={segment.id}
               data-segment={segment.id}
-              className={`absolute h-full overflow-hidden ${
-                dragState || disableTransitions ? '' : 'transition-all'
-              } ${isToolActive && toolCursor ? 'cursor-crosshair' : 'cursor-default'}`}
+              className={cn(
+                'absolute h-full overflow-hidden rounded',
+                isSelected
+                  ? cn(colorConfig.segmentSelected, SELECTED_SEGMENT_CLASS)
+                  : colorConfig.segment,
+                dragState || disableTransitions ? '' : 'transition-all',
+                isToolActive && toolCursor
+                  ? 'cursor-crosshair'
+                  : 'cursor-default'
+              )}
               style={{
                 left: `${leftPixels}px`,
                 width: `${widthPixels}px`,
                 minWidth: '4px',
                 cursor: isToolActive && toolCursor ? toolCursor : undefined,
-                background: `linear-gradient(to bottom, ${gradient[0]} 0%, ${gradient[1]} 100%)`,
                 opacity: isDragging ? 0.4 : undefined,
               }}
               onClick={e => handleSegmentClick(e, segment.id)}
             >
               {!(isToolActive && toolCursor) && onResize && (
                 <>
-                  <div className="absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20">
-                    <div className="absolute top-1/2 left-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
+                  <div className="group hover:bg-foreground/10 absolute top-0 left-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors">
+                    <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 left-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
                   </div>
-                  <div className="absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors hover:bg-white/20">
-                    <div className="absolute top-1/2 right-0.5 h-4 w-1 -translate-y-1/2 rounded-full bg-white/40" />
+                  <div className="group hover:bg-foreground/10 absolute top-0 right-0 z-20 h-full w-3 cursor-ew-resize bg-transparent transition-colors">
+                    <div className="bg-foreground/40 group-hover:bg-foreground/70 absolute top-1/2 right-0.5 h-3 w-0.5 -translate-y-1/2 rounded-full" />
                   </div>
                 </>
               )}
@@ -437,7 +445,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
               {showDuration && (
                 <div className="absolute bottom-3 left-0 flex w-full items-center justify-center">
-                  <span className="text-sm font-medium text-white">
+                  <span className="text-foreground/90 text-xs font-medium">
                     {formatDuration(segment.endTime - segment.startTime)}
                   </span>
                 </div>
@@ -445,31 +453,30 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
               {renderLabel && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span className="text-sm font-medium text-white drop-shadow-md">
+                  <span className="text-foreground/90 text-xs font-medium">
                     {renderLabel(segment, widthPixels)}
                   </span>
                 </div>
               )}
 
               {showCutMarkers &&
-                colorConfig.cutMarker &&
+                colorConfig.cutBadge &&
                 index < segments.length - 1 && (
                   <div
-                    data-cut={index}
                     className="absolute top-0 -right-3 z-10 flex h-full w-6 items-start justify-center"
                     style={{ transform: 'translateX(50%)' }}
                   >
                     <div className="flex flex-col items-center">
                       <div
-                        className={`flex size-5 items-center justify-center rounded-full ${colorConfig.cutMarker}`}
-                        style={{ marginTop: '-10px' }}
+                        className={cn(
+                          'text-primary-foreground flex size-4 items-center justify-center rounded-full',
+                          colorConfig.cutBadge
+                        )}
+                        style={{ marginTop: '-8px' }}
                       >
-                        <Scissors className="size-3 text-white" />
+                        <Scissors className="size-2.5" />
                       </div>
-                      <div
-                        className="h-full w-0.5"
-                        style={{ backgroundColor: 'rgba(245, 158, 11, 0.5)' }}
-                      />
+                      <div className={cn('h-full w-px', colorConfig.cutLine)} />
                     </div>
                   </div>
                 )}
@@ -479,12 +486,14 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
 
         {dragState?.type === 'draw' && previewEnd !== null && (
           <div
-            className={`absolute h-full overflow-hidden border-2 border-dashed ${colorConfig.border} bg-opacity-40`}
+            className={cn(
+              'absolute h-full overflow-hidden rounded',
+              colorConfig.preview
+            )}
             style={{
               left: `${timeToPixels(Math.min(dragState.startTime, previewEnd))}px`,
               width: `${timeToPixels(Math.abs(previewEnd - dragState.startTime))}px`,
               minWidth: '2px',
-              background: `linear-gradient(to bottom, ${colorConfig.gradient[0]}66 0%, ${colorConfig.gradient[1]}66 100%)`,
             }}
           />
         )}
@@ -496,7 +505,7 @@ const Track = forwardRef<HTMLDivElement, TrackProps>(
         {segments.length === 0 &&
           !dragState &&
           (emptyText || emptyTextActive) && (
-            <div className="text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center text-xs">
+            <div className="text-muted-foreground/70 pointer-events-none absolute inset-0 flex items-center justify-center text-xs">
               {isToolActive ? emptyTextActive : emptyText}
             </div>
           )}

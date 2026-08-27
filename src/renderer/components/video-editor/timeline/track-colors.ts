@@ -1,76 +1,93 @@
 export interface TrackColors {
-  border: string;
-  gradient: [string, string];
-  selectedGradient: [string, string];
-  cutMarker?: string;
+  segment: string;
+  segmentSelected: string;
+  preview: string;
+  cutLine?: string;
+  cutBadge?: string;
 }
 
+export const SELECTED_SEGMENT_CLASS =
+  'ring-1 ring-primary shadow-[0_0_8px] shadow-primary/40';
+
 export const TRACK_COLORS: Record<string, TrackColors> = {
-  orange: {
-    border: 'border-amber-600',
-    gradient: ['#d97706', '#b45309'],
-    selectedGradient: ['#3b82f6', '#1d4ed8'],
-    cutMarker: 'bg-amber-500',
+  video: {
+    segment: 'border border-track-video/50 bg-track-video/25',
+    segmentSelected: 'border border-track-video/50 bg-track-video/35',
+    preview: 'border-2 border-dashed border-track-video/60 bg-track-video/25',
+    cutLine: 'bg-track-video/60',
+    cutBadge: 'bg-track-video',
   },
-  indigo: {
-    border: 'border-indigo-600',
-    gradient: ['#818cf8', '#4f46e5'],
-    selectedGradient: ['#3b82f6', '#1d4ed8'],
+  zoom: {
+    segment: 'border border-track-zoom/50 bg-track-zoom/25',
+    segmentSelected: 'border border-track-zoom/50 bg-track-zoom/35',
+    preview: 'border-2 border-dashed border-track-zoom/60 bg-track-zoom/25',
   },
-  purple: {
-    border: 'border-purple-600',
-    gradient: ['#c084fc', '#7e22ce'],
-    selectedGradient: ['#3b82f6', '#1d4ed8'],
+  music: {
+    segment: 'border border-track-music/50 bg-track-music/25',
+    segmentSelected: 'border border-track-music/50 bg-track-music/35',
+    preview: 'border-2 border-dashed border-track-music/60 bg-track-music/25',
   },
 };
 
-const SELECTED_GRADIENT: [string, string] = ['#3b82f6', '#1d4ed8'];
-
 export const DRAWING_TRACK_COLORS: Record<string, TrackColors> = {
   pen: {
-    border: 'border-teal-600',
-    gradient: ['#2dd4bf', '#0f766e'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-pen/50 bg-track-draw-pen/25',
+    segmentSelected: 'border border-track-draw-pen/50 bg-track-draw-pen/35',
+    preview:
+      'border-2 border-dashed border-track-draw-pen/60 bg-track-draw-pen/25',
   },
   highlight: {
-    border: 'border-yellow-600',
-    gradient: ['#facc15', '#a16207'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-highlight/50 bg-track-draw-highlight/25',
+    segmentSelected:
+      'border border-track-draw-highlight/50 bg-track-draw-highlight/35',
+    preview:
+      'border-2 border-dashed border-track-draw-highlight/60 bg-track-draw-highlight/25',
   },
   rectangle: {
-    border: 'border-sky-600',
-    gradient: ['#38bdf8', '#0369a1'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-rectangle/50 bg-track-draw-rectangle/25',
+    segmentSelected:
+      'border border-track-draw-rectangle/50 bg-track-draw-rectangle/35',
+    preview:
+      'border-2 border-dashed border-track-draw-rectangle/60 bg-track-draw-rectangle/25',
   },
   circle: {
-    border: 'border-cyan-600',
-    gradient: ['#22d3ee', '#0e7490'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-circle/50 bg-track-draw-circle/25',
+    segmentSelected:
+      'border border-track-draw-circle/50 bg-track-draw-circle/35',
+    preview:
+      'border-2 border-dashed border-track-draw-circle/60 bg-track-draw-circle/25',
   },
   line: {
-    border: 'border-lime-600',
-    gradient: ['#a3e635', '#4d7c0f'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-line/50 bg-track-draw-line/25',
+    segmentSelected: 'border border-track-draw-line/50 bg-track-draw-line/35',
+    preview:
+      'border-2 border-dashed border-track-draw-line/60 bg-track-draw-line/25',
   },
   arrow: {
-    border: 'border-emerald-600',
-    gradient: ['#34d399', '#047857'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-arrow/50 bg-track-draw-arrow/25',
+    segmentSelected: 'border border-track-draw-arrow/50 bg-track-draw-arrow/35',
+    preview:
+      'border-2 border-dashed border-track-draw-arrow/60 bg-track-draw-arrow/25',
   },
   text: {
-    border: 'border-pink-600',
-    gradient: ['#f472b6', '#be185d'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-text/50 bg-track-draw-text/25',
+    segmentSelected: 'border border-track-draw-text/50 bg-track-draw-text/35',
+    preview:
+      'border-2 border-dashed border-track-draw-text/60 bg-track-draw-text/25',
   },
   number: {
-    border: 'border-orange-600',
-    gradient: ['#fb923c', '#c2410c'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-number/50 bg-track-draw-number/25',
+    segmentSelected:
+      'border border-track-draw-number/50 bg-track-draw-number/35',
+    preview:
+      'border-2 border-dashed border-track-draw-number/60 bg-track-draw-number/25',
   },
   redact: {
-    border: 'border-rose-600',
-    gradient: ['#fb7185', '#9f1239'],
-    selectedGradient: SELECTED_GRADIENT,
+    segment: 'border border-track-draw-redact/50 bg-track-draw-redact/25',
+    segmentSelected:
+      'border border-track-draw-redact/50 bg-track-draw-redact/35',
+    preview:
+      'border-2 border-dashed border-track-draw-redact/60 bg-track-draw-redact/25',
   },
 };
 

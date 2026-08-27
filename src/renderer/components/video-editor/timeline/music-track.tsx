@@ -35,9 +35,10 @@ interface MusicTrackProps {
 }
 
 const DISABLED_COLORS: TrackColors = {
-  border: 'border-neutral-600',
-  gradient: ['#525252', '#404040'],
-  selectedGradient: ['#525252', '#404040'],
+  segment: 'border border-muted-foreground/40 bg-muted-foreground/20',
+  segmentSelected: 'border border-muted-foreground/40 bg-muted-foreground/30',
+  preview:
+    'border-2 border-dashed border-muted-foreground/40 bg-muted-foreground/20',
 };
 
 export default function MusicTrack({
@@ -60,7 +61,7 @@ export default function MusicTrack({
   ];
 
   const Icon = SOURCE_ICONS[track.source];
-  const colors = track.enabled ? TRACK_COLORS.purple : DISABLED_COLORS;
+  const colors = track.enabled ? TRACK_COLORS.music : DISABLED_COLORS;
 
   const renderLabel = useCallback(
     (_segment: TrackSegment, widthPixels: number) => {
@@ -68,7 +69,7 @@ export default function MusicTrack({
       const duration = track.endTime - track.startTime;
 
       if (widthPixels < 60) {
-        return <Icon className="size-3 shrink-0 text-white" />;
+        return <Icon className="size-3 shrink-0" />;
       }
 
       return (
@@ -83,7 +84,7 @@ export default function MusicTrack({
             </span>
           )}
           {hasSpeedChange && widthPixels >= 100 && (
-            <span className="rounded bg-white/20 px-1 py-0.5 text-xs font-medium">
+            <span className="bg-foreground/10 rounded px-1 py-0.5 text-xs font-medium">
               {formatPlaybackSpeed(track.speed)}
             </span>
           )}

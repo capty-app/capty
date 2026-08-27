@@ -121,7 +121,7 @@ const ZoomTrack = forwardRef<HTMLDivElement, ZoomTrackProps>(
               totalDuration={totalDuration}
               selectedId={selectedId}
               isToolActive={true}
-              colors="indigo"
+              colors="zoom"
               features={{
                 canDraw: true,
                 canMove: true,
