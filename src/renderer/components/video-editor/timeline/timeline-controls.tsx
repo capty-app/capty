@@ -112,32 +112,27 @@ export default function TimelineControls({
       </Tooltip>
 
       {hasSelectedSegment && canDeleteSegment && (
-        <>
-          <Separator orientation="vertical" className="mx-1 h-5" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={onDeleteSegment}
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive size-8"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Delete Segment (Backspace)
-            </TooltipContent>
-          </Tooltip>
-        </>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={onDeleteSegment}
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:text-destructive size-8"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Delete Segment (Backspace)</TooltipContent>
+        </Tooltip>
       )}
 
       <Separator orientation="vertical" className="mx-1 h-5" />
 
-      <span className="text-muted-foreground font-mono text-sm">
+      <span className="text-muted-foreground font-mono text-xs tabular-nums">
         {formatTime(timelinePosition)} / {formatTime(totalTimelineDuration)}
         {segmentCount > 1 && (
-          <span className="ml-2 text-amber-500">({segmentCount} clips)</span>
+          <span className="ml-2">({segmentCount} clips)</span>
         )}
       </span>
 

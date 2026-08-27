@@ -1,21 +1,11 @@
 import { useMemo } from 'react';
 import { formatTime } from '../utils';
 import { useTimeline } from './use-timeline';
+import { getMarkInterval } from './ruler-scale';
 
 interface TimelineRulerProps {
   totalDuration: number;
   minDisplayDuration?: number;
-}
-
-function getMarkInterval(pixelsPerSecond: number): number {
-  const targetPixelsBetweenMarks = 60;
-  const rawInterval = targetPixelsBetweenMarks / pixelsPerSecond;
-
-  const intervals = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
-  for (const interval of intervals) {
-    if (rawInterval <= interval) return interval;
-  }
-  return 60;
 }
 
 export default function TimelineRuler({
@@ -71,10 +61,10 @@ export default function TimelineRuler({
                   transform: isFirst ? 'none' : 'translateX(-50%)',
                 }}
               >
-                <span className="text-muted-foreground text-xs">
+                <span className="text-muted-foreground text-xs tabular-nums">
                   {formatTime(mark.time)}
                 </span>
-                <div className="bg-muted-foreground/30 mt-0.5 h-2 w-px" />
+                <div className="bg-muted-foreground/40 mt-0.5 h-1.5 w-px" />
               </div>
             );
           })}
