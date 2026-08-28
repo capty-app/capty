@@ -10,6 +10,7 @@ const mockIpcMainOn = vi.fn();
 const mockClipboardWriteText = vi.fn();
 
 class MockNotification {
+  static isSupported = () => true;
   show = mockNotificationShow;
 
   constructor(options: unknown) {

@@ -1,15 +1,6 @@
 import { exec } from 'child_process';
 import { selectDisplay } from '../display-selector';
-import {
-  screen,
-  clipboard,
-  nativeImage,
-  ipcMain,
-  app,
-  dialog,
-  Notification,
-  BrowserWindow,
-} from 'electron';
+import { screen, ipcMain, app, dialog, BrowserWindow } from 'electron';
 import fs from 'fs';
 import { getConfig, updateConfig } from '@/main/settings';
 import { daemon } from '@/main/daemon';
@@ -46,6 +37,11 @@ import { openScreenshotFromHistory } from '@/main/capture/screenshot/open-from-h
 import { createOrShowSettingsWindow } from '@/main/settings';
 import { showCapturePreview } from '@/main/capture/capture-preview';
 import { openScreenshotEditor } from '@/main/capture/screenshot/open-editor';
+import { showNotification } from '@/main/utils/notifications';
+import {
+  resolveCaptureOutcome,
+  copyScreenshotToClipboard,
+} from './capture-feedback.ts';
 
 export type CaptureMode = 'screen' | 'area' | 'window';
 
@@ -95,32 +91,25 @@ async function captureScreenMode(): Promise<void> {
       await showDesktopIcons('capture');
     }
 
-    if (error) {
-      console.log(`error: ${error.message}`);
-      return;
-    }
-    if (stderr) {
-      console.log(`stderr: ${stderr}`);
+    if (
+      resolveCaptureOutcome(error, stderr, screenshotPath, false) !== 'captured'
+    ) {
       return;
     }
 
-    if (fs.existsSync(screenshotPath)) {
-      const historyItem = await addToHistory(screenshotPath);
+    const historyItem = await addToHistory(screenshotPath);
 
-      if (config.screenshot.captureToClipboard) {
-        const imageBuffer = fs.readFileSync(screenshotPath);
-        const image = nativeImage.createFromBuffer(imageBuffer);
-        clipboard.writeImage(image);
-        return;
-      }
-
-      if (config.screenshot.showPreview) {
-        showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
-        return;
-      }
-
-      openScreenshotEditor(screenshotPath, historyItem?.id);
+    if (config.screenshot.captureToClipboard) {
+      copyScreenshotToClipboard(screenshotPath);
+      return;
     }
+
+    if (config.screenshot.showPreview) {
+      showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
+      return;
+    }
+
+    openScreenshotEditor(screenshotPath, historyItem?.id);
   });
 }
 
@@ -155,32 +144,25 @@ async function captureWindowMode(): Promise<void> {
       await showDesktopIcons('capture');
     }
 
-    if (error) {
-      console.log(`error: ${error.message}`);
-      return;
-    }
-    if (stderr) {
-      console.log(`stderr: ${stderr}`);
+    if (
+      resolveCaptureOutcome(error, stderr, screenshotPath, true) !== 'captured'
+    ) {
       return;
     }
 
-    if (fs.existsSync(screenshotPath)) {
-      const historyItem = await addToHistory(screenshotPath);
+    const historyItem = await addToHistory(screenshotPath);
 
-      if (config.screenshot.captureToClipboard) {
-        const imageBuffer = fs.readFileSync(screenshotPath);
-        const image = nativeImage.createFromBuffer(imageBuffer);
-        clipboard.writeImage(image);
-        return;
-      }
-
-      if (config.screenshot.showPreview) {
-        showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
-        return;
-      }
-
-      openScreenshotEditor(screenshotPath, historyItem?.id);
+    if (config.screenshot.captureToClipboard) {
+      copyScreenshotToClipboard(screenshotPath);
+      return;
     }
+
+    if (config.screenshot.showPreview) {
+      showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
+      return;
+    }
+
+    openScreenshotEditor(screenshotPath, historyItem?.id);
   });
 }
 
@@ -226,37 +208,29 @@ async function captureAreaMode(): Promise<void> {
         await showDesktopIcons('capture');
       }
 
-      if (error) {
-        console.log(`error: ${error.message}`);
+      if (
+        resolveCaptureOutcome(error, stderr, screenshotPath, true) !==
+        'captured'
+      ) {
         resolve();
         return;
       }
-      if (stderr) {
-        console.log(`stderr: ${stderr}`);
+
+      const historyItem = await addToHistory(screenshotPath);
+
+      if (config.screenshot.captureToClipboard) {
+        copyScreenshotToClipboard(screenshotPath);
         resolve();
         return;
       }
 
-      if (fs.existsSync(screenshotPath)) {
-        const historyItem = await addToHistory(screenshotPath);
-
-        if (config.screenshot.captureToClipboard) {
-          const imageBuffer = fs.readFileSync(screenshotPath);
-          const image = nativeImage.createFromBuffer(imageBuffer);
-          clipboard.writeImage(image);
-          resolve();
-          return;
-        }
-
-        if (config.screenshot.showPreview) {
-          showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
-          resolve();
-          return;
-        }
-
-        openScreenshotEditor(screenshotPath, historyItem?.id);
+      if (config.screenshot.showPreview) {
+        showCapturePreview(screenshotPath, 'screenshot', historyItem?.id);
+        resolve();
+        return;
       }
 
+      openScreenshotEditor(screenshotPath, historyItem?.id);
       resolve();
     });
   });
@@ -419,10 +393,10 @@ export function registerIpcHandlers(): void {
     if (historyItem) {
       await deleteHistoryItem(historyItem.id);
       if (getConfig().general.showDeletionNotifications) {
-        new Notification({
+        showNotification({
           title: 'Screenshot Deleted',
           body: 'The screenshot has been permanently deleted.',
-        }).show();
+        });
       }
     }
   });

@@ -21,6 +21,7 @@ vi.mock('child_process', () => ({
 }));
 
 class MockNotification {
+  static isSupported = () => true;
   constructor(_args: unknown) {
     void _args;
   }

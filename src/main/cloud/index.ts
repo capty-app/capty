@@ -1,4 +1,4 @@
-import { ipcMain, Notification, clipboard } from 'electron';
+import { ipcMain, clipboard } from 'electron';
 import path from 'path';
 import { CaptyCloudClient } from './capty-client.ts';
 import { S3Client } from './s3-client.ts';
@@ -10,6 +10,7 @@ import {
 } from './upload-source.ts';
 import { getConfig } from '@/main/settings';
 import { getCachedLicense } from '@/main/license/cache.ts';
+import { showNotification } from '@/main/utils/notifications';
 import { isPro } from '@/main/license/validation.ts';
 import type {
   CloudConfig,
@@ -295,14 +296,6 @@ export function isCloudConfigured(): boolean {
 
 const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
-function showNotification(title: string, body: string): void {
-  const notification = new Notification({
-    title,
-    body,
-  });
-  notification.show();
-}
-
 const activeFileUploads = new Map<number, AbortController>();
 
 function abortFileUpload(senderId: number, reason: string): void {
@@ -314,11 +307,14 @@ export function init(): void {
     try {
       const url = await uploadImage(imageBase64);
       clipboard.writeText(url);
-      showNotification('Image Uploaded', 'Link copied to clipboard');
+      showNotification({
+        title: 'Image Uploaded',
+        body: 'Link copied to clipboard',
+      });
       return { success: true, url };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed';
-      showNotification('Upload Failed', message);
+      showNotification({ title: 'Upload Failed', body: message });
       return { success: false, error: message };
     }
   });
@@ -338,7 +334,10 @@ export function init(): void {
     try {
       const url = await uploadFile(filePath, controller.signal);
       clipboard.writeText(url);
-      showNotification(`${label} Uploaded`, 'Link copied to clipboard');
+      showNotification({
+        title: `${label} Uploaded`,
+        body: 'Link copied to clipboard',
+      });
       return { success: true, url };
     } catch (error) {
       if (controller.signal.reason === 'cancelled') {
@@ -350,7 +349,7 @@ export function init(): void {
           : error instanceof Error
             ? error.message
             : 'Upload failed';
-      showNotification(`${label} Upload Failed`, message);
+      showNotification({ title: `${label} Upload Failed`, body: message });
       return { success: false, error: message };
     } finally {
       clearTimeout(timeout);

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MusicTrack } from '@/types/music';
 import { DEFAULT_MUSIC_TRACK_VOLUME } from '@/types/music';
 import type { SliceController } from './use-editor-history';
+import { useToast } from '@/renderer/hooks/useToast';
 
 interface UseMusicTracksProps {
   totalTimelineDuration: number;
@@ -94,6 +95,7 @@ export function useMusicTracks({
   totalTimelineDuration,
   slice,
 }: UseMusicTracksProps): UseMusicTracksReturn {
+  const { toast } = useToast();
   const {
     value: musicTracks,
     set: setMusicTracks,
@@ -146,6 +148,13 @@ export function useMusicTracks({
     };
 
     if (!result.success || !result.fileName || !result.originalDuration) {
+      if (result.error && result.error !== 'Cancelled') {
+        toast({
+          variant: 'error',
+          title: "Couldn't add audio file",
+          description: result.error,
+        });
+      }
       return;
     }
 
@@ -168,7 +177,7 @@ export function useMusicTracks({
     };
 
     setMusicTracks(prev => [...prev, newTrack]);
-  }, [totalTimelineDuration, setMusicTracks]);
+  }, [totalTimelineDuration, setMusicTracks, toast]);
 
   const handleRemoveMusicTrack = useCallback(
     (id: string) => {

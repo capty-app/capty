@@ -9,6 +9,7 @@ const mockExec = vi.fn<(command: string, callback: ExecCallback) => void>();
 const mockClipboardWriteImage = vi.fn();
 const mockCreateFromBuffer = vi.fn(() => ({ image: true }));
 const mockGetConfig = vi.fn();
+const mockShowNotification = vi.fn();
 const mockAddToHistory = vi.fn();
 const mockGenerateScreenshotPath = vi.fn(() => '/path/Screenshot.png');
 const mockShowCapturePreview = vi.fn();
@@ -40,6 +41,10 @@ vi.mock('fs', () => ({
 
 vi.mock('@/main/settings', () => ({
   getConfig: () => mockGetConfig(),
+}));
+
+vi.mock('@/main/utils/notifications', () => ({
+  showNotification: (...a: unknown[]) => mockShowNotification(...a),
 }));
 
 vi.mock('@/main/history', () => ({

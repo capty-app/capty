@@ -1,13 +1,7 @@
-import {
-  BrowserWindow,
-  shell,
-  ipcMain,
-  app,
-  screen,
-  Notification,
-} from 'electron';
+import { BrowserWindow, shell, ipcMain, app, screen } from 'electron';
 import path from 'path';
 import { isDev, devServerUrl } from '@/main/utils/env';
+import { showNotification } from '@/main/utils/notifications';
 
 let activationWindow: BrowserWindow | null = null;
 
@@ -101,13 +95,10 @@ export function init(): void {
     closeActivationWindow();
     broadcastLicenseChanged();
 
-    if (Notification.isSupported()) {
-      const notification = new Notification({
-        title: 'Capty Pro Activated',
-        body: 'Your license has been successfully activated. Enjoy Capty Pro!',
-      });
-      notification.show();
-    }
+    showNotification({
+      title: 'Capty Pro Activated',
+      body: 'Your license has been successfully activated. Enjoy Capty Pro!',
+    });
   });
 
   ipcMain.on('license:close', () => {

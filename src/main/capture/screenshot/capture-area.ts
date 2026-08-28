@@ -1,12 +1,14 @@
 import { exec } from 'child_process';
-import { clipboard, nativeImage } from 'electron';
-import fs from 'fs';
 import { getConfig } from '@/main/settings';
 import { addToHistory } from '@/main/history';
 import { generateScreenshotPath } from './utils.ts';
 import type { AreaSelection } from '@/types/area.ts';
 import { showCapturePreview } from '@/main/capture/capture-preview';
 import { openScreenshotEditor } from '@/main/capture/screenshot/open-editor';
+import {
+  resolveCaptureOutcome,
+  copyScreenshotToClipboard,
+} from './capture-feedback.ts';
 
 export interface CaptureAreaOptions {
   onCaptured?: () => void | Promise<void>;
@@ -41,17 +43,14 @@ export async function captureArea(
 
   return new Promise((resolve, reject) => {
     exec(command, async (error, _stdout, stderr) => {
-      if (error) {
-        console.error('Screenshot capture error:', error.message);
-        reject(error);
-        return;
-      }
-
-      if (stderr) {
-        console.error('Screenshot capture stderr:', stderr);
-      }
-
-      if (!fs.existsSync(screenshotPath)) {
+      if (
+        resolveCaptureOutcome(error, stderr, screenshotPath, false) !==
+        'captured'
+      ) {
+        if (error) {
+          reject(error);
+          return;
+        }
         resolve(null);
         return;
       }
@@ -61,9 +60,7 @@ export async function captureArea(
       const historyItem = await addToHistory(screenshotPath);
 
       if (config.screenshot.captureToClipboard) {
-        const imageBuffer = fs.readFileSync(screenshotPath);
-        const image = nativeImage.createFromBuffer(imageBuffer);
-        clipboard.writeImage(image);
+        copyScreenshotToClipboard(screenshotPath);
         resolve(screenshotPath);
         return;
       }

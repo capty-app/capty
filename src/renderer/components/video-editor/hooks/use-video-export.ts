@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { VideoExportOptions, VideoMetadata } from '@/types/video';
 import type { ExportSettings } from '@/types/video-editor-state';
 import type { CloudUploadState } from '@/types/cloud';
@@ -16,6 +16,7 @@ import type { DrawingSegment } from '@/types/drawing';
 import { clampExportOptionsToFree } from '@/types/entitlements';
 import { WebCodecsExporter } from '../export';
 import { videoToTimeline, getTotalTimelineDuration } from '../utils';
+import { useToast } from '@/renderer/hooks/useToast';
 
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: 'mp4',
@@ -54,6 +55,7 @@ interface ExportConfig {
 interface UseVideoExportReturn {
   isExporting: boolean;
   exportProgress: number;
+  exportError: string | null;
   exportSettings: ExportSettings;
   setExportSettings: React.Dispatch<React.SetStateAction<ExportSettings>>;
   cloudUploadState: CloudUploadState;
@@ -69,8 +71,10 @@ interface UseVideoExportReturn {
 }
 
 export function useVideoExport(): UseVideoExportReturn {
+  const { toast } = useToast();
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exportSettings, setExportSettings] = useState<ExportSettings>(
     DEFAULT_EXPORT_SETTINGS
   );
@@ -86,58 +90,6 @@ export function useVideoExport(): UseVideoExportReturn {
 
   const cancelCloudUpload = useCallback(() => {
     window.ipcRenderer.send('cloud:cancelUpload');
-  }, []);
-
-  useEffect(() => {
-    const handleExportStarted = () => {
-      setIsExporting(true);
-      setExportProgress(0);
-    };
-
-    const handleSaved = () => {
-      setIsExporting(false);
-      setExportProgress(100);
-      setTimeout(() => {
-        setExportProgress(0);
-      }, 2000);
-    };
-
-    const handleSaveError = () => {
-      setIsExporting(false);
-      setExportProgress(0);
-    };
-
-    const handleSaveProgress = (
-      _event: unknown,
-      data: { progress: number }
-    ) => {
-      setExportProgress(data.progress);
-    };
-
-    const handleSaveCancelled = () => {
-      setIsExporting(false);
-      setExportProgress(0);
-    };
-
-    window.ipcRenderer.on('video-editor:export-started', handleExportStarted);
-    window.ipcRenderer.on('video-editor:saved', handleSaved);
-    window.ipcRenderer.on('video-editor:save-error', handleSaveError);
-    window.ipcRenderer.on('video-editor:save-progress', handleSaveProgress);
-    window.ipcRenderer.on('video-editor:save-cancelled', handleSaveCancelled);
-
-    return () => {
-      window.ipcRenderer.off(
-        'video-editor:export-started',
-        handleExportStarted
-      );
-      window.ipcRenderer.off('video-editor:saved', handleSaved);
-      window.ipcRenderer.off('video-editor:save-error', handleSaveError);
-      window.ipcRenderer.off('video-editor:save-progress', handleSaveProgress);
-      window.ipcRenderer.off(
-        'video-editor:save-cancelled',
-        handleSaveCancelled
-      );
-    };
   }, []);
 
   const handleExport = useCallback(
@@ -170,6 +122,7 @@ export function useVideoExport(): UseVideoExportReturn {
 
       setIsExporting(true);
       setExportProgress(0);
+      setExportError(null);
       setCloudUploadState('idle');
       setUploadedUrl(null);
 
@@ -271,7 +224,17 @@ export function useVideoExport(): UseVideoExportReturn {
         });
 
         if (!result.success) {
+          if (result.error === 'Export cancelled') {
+            return;
+          }
           console.error('Export failed:', result.error);
+          const message = result.error || 'The video could not be exported.';
+          setExportError(message);
+          toast({
+            variant: 'error',
+            title: 'Export failed',
+            description: message,
+          });
           return;
         }
 
@@ -298,6 +261,13 @@ export function useVideoExport(): UseVideoExportReturn {
 
           if (!gifResult.success) {
             console.error('GIF conversion failed:', gifResult.error);
+            const message = gifResult.error || 'The GIF could not be created.';
+            setExportError(message);
+            toast({
+              variant: 'error',
+              title: 'GIF conversion failed',
+              description: message,
+            });
             return;
           }
         }
@@ -325,14 +295,35 @@ export function useVideoExport(): UseVideoExportReturn {
               setCloudUploadState('idle');
             } else {
               setCloudUploadState('error');
+              toast({
+                variant: 'error',
+                title: 'Cloud upload failed',
+                description: uploadResult.error,
+              });
             }
           } catch (uploadError) {
             console.error('Cloud upload failed:', uploadError);
             setCloudUploadState('error');
+            toast({
+              variant: 'error',
+              title: 'Cloud upload failed',
+              description:
+                uploadError instanceof Error ? uploadError.message : undefined,
+            });
           }
         }
       } catch (error) {
         console.error('Export error:', error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'The video could not be exported.';
+        setExportError(message);
+        toast({
+          variant: 'error',
+          title: 'Export failed',
+          description: message,
+        });
       } finally {
         if (keyboardSoundTempPath) {
           window.ipcRenderer
@@ -345,7 +336,7 @@ export function useVideoExport(): UseVideoExportReturn {
         exporterRef.current = null;
       }
     },
-    [isExporting, exportSettings.openInFinder]
+    [isExporting, exportSettings.openInFinder, toast]
   );
 
   const handleCancelExport = useCallback(() => {
@@ -364,6 +355,7 @@ export function useVideoExport(): UseVideoExportReturn {
   return {
     isExporting,
     exportProgress,
+    exportError,
     exportSettings,
     setExportSettings,
     cloudUploadState,

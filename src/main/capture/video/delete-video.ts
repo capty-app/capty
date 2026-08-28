@@ -1,4 +1,4 @@
-import { dialog, Notification, BrowserWindow } from 'electron';
+import { dialog, BrowserWindow } from 'electron';
 import { existsSync, unlinkSync, rmSync } from 'fs';
 import {
   getHistoryItemByPath,
@@ -6,6 +6,7 @@ import {
 } from '@/main/history/index.ts';
 import { getConfig } from '@/main/settings';
 import { deleteThumbnail } from '@/main/utils/thumbnails.ts';
+import { showNotification } from '@/main/utils/notifications';
 import { deleteCursorData } from './cursor-data.ts';
 import { deleteCameraData } from './camera-data.ts';
 import { deleteKeyboardData } from './keyboard-data.ts';
@@ -151,10 +152,10 @@ function showDeletionNotification(): void {
   if (!getConfig().general.showDeletionNotifications) {
     return;
   }
-  new Notification({
+  showNotification({
     title: 'Video Deleted',
     body: 'The video has been permanently deleted.',
-  }).show();
+  });
 }
 
 async function showDeletionErrorDialog(error: unknown): Promise<void> {

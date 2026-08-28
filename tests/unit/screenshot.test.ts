@@ -156,7 +156,12 @@ const mockConfig: Partial<SettingsConfig> = {
 };
 
 const mockGetConfig = vi.fn(() => mockConfig);
+const mockShowNotification = vi.fn();
 const mockUpdateConfig = vi.fn();
+
+vi.mock('@/main/utils/notifications', () => ({
+  showNotification: (...a: unknown[]) => mockShowNotification(...a),
+}));
 
 vi.mock('@/main/settings', () => ({
   getConfig: () => mockGetConfig(),
@@ -740,8 +745,10 @@ describe('Screenshot Module', () => {
   });
 
   describe('screenshot() exec callback behavior', () => {
-    it('should log error when exec returns error', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('should notify failure when exec returns error', async () => {
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
       const testError = new Error('Test error');
 
       mockExec.mockImplementation(
@@ -756,14 +763,17 @@ describe('Screenshot Module', () => {
       const { default: screenshot } = await import('@/main/capture/screenshot');
       await screenshot('screen');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('error: Test error')
-      );
+      expect(mockShowNotification).toHaveBeenCalledWith({
+        title: 'Screenshot Failed',
+        body: 'Test error',
+      });
       consoleSpy.mockRestore();
     });
 
-    it('should log stderr when exec returns stderr', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('should notify failure when exec returns stderr', async () => {
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       mockExec.mockImplementation(
         (
@@ -777,9 +787,10 @@ describe('Screenshot Module', () => {
       const { default: screenshot } = await import('@/main/capture/screenshot');
       await screenshot('screen');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('stderr: stderr message')
-      );
+      expect(mockShowNotification).toHaveBeenCalledWith({
+        title: 'Screenshot Failed',
+        body: 'stderr message',
+      });
       consoleSpy.mockRestore();
     });
 

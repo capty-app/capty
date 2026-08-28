@@ -1,4 +1,3 @@
-import { clipboard, nativeImage } from 'electron';
 import fs from 'fs';
 import { daemon } from '@/main/daemon';
 import { getConfig, updateConfig } from '@/main/settings';
@@ -12,6 +11,8 @@ import { addToHistory } from '@/main/history';
 import { generateScreenshotPath } from '@/main/capture/screenshot/utils';
 import { showCapturePreview } from '@/main/capture/capture-preview';
 import { openScreenshotEditor } from '@/main/capture/screenshot/open-editor';
+import { copyScreenshotToClipboard } from '@/main/capture/screenshot/capture-feedback';
+import { showNotification } from '@/main/utils/notifications';
 import {
   startAreaSelection,
   cancelAreaSelection,
@@ -24,6 +25,11 @@ interface ScrollCaptureState {
   frameCount: number;
   estimatedHeight: number;
 }
+
+const SCROLL_CAPTURE_FAILURE = {
+  title: 'Scroll Capture Failed',
+  body: 'The scrolling screenshot could not be captured.',
+};
 
 let activeEventHandler: ((event: string, data: unknown) => void) | null = null;
 
@@ -118,10 +124,12 @@ export async function startScrollCapture(): Promise<void> {
             if (result.success) {
               await finishCapture(result.outputPath);
             } else {
+              showNotification(SCROLL_CAPTURE_FAILURE);
               await cancelCapture();
             }
           } catch (error) {
             console.error('Scroll capture finish failed:', error);
+            showNotification(SCROLL_CAPTURE_FAILURE);
             await cancelCapture();
           }
         } else if (eventType === 'cancelled') {
@@ -143,6 +151,10 @@ export async function startScrollCapture(): Promise<void> {
         });
       } catch (error) {
         console.error('Failed to start scroll capture:', error);
+        showNotification({
+          title: 'Scroll Capture Failed',
+          body: 'The scrolling capture could not be started.',
+        });
         await cancelCapture();
       }
     };
@@ -164,6 +176,7 @@ export async function startScrollCapture(): Promise<void> {
 async function handleCaptureComplete(outputPath: string): Promise<void> {
   if (!fs.existsSync(outputPath)) {
     console.error('Scroll capture output file not found:', outputPath);
+    showNotification(SCROLL_CAPTURE_FAILURE);
     return;
   }
 
@@ -171,9 +184,7 @@ async function handleCaptureComplete(outputPath: string): Promise<void> {
   const historyItem = await addToHistory(outputPath);
 
   if (config.screenshot.captureToClipboard) {
-    const imageBuffer = fs.readFileSync(outputPath);
-    const image = nativeImage.createFromBuffer(imageBuffer);
-    clipboard.writeImage(image);
+    copyScreenshotToClipboard(outputPath);
     return;
   }
 

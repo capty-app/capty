@@ -74,6 +74,7 @@ export default function SubtitleSettingsPanel({
     useState<SubtitleGenerationStatus>({ status: 'idle' });
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const checkWhisperStatus = useCallback(async () => {
     setDownloadStatus({ status: 'checking' });
@@ -186,8 +187,12 @@ export default function SubtitleSettingsPanel({
 
   const handleImport = useCallback(async () => {
     setIsImporting(true);
+    setImportError(null);
     try {
-      await onSubtitleDataImport();
+      const result = await onSubtitleDataImport();
+      if (!result.success && result.error && result.error !== 'Cancelled') {
+        setImportError(result.error);
+      }
     } finally {
       setIsImporting(false);
     }
@@ -326,6 +331,12 @@ export default function SubtitleSettingsPanel({
               <FileUp className="size-3.5" />
               {isImporting ? 'Importing...' : 'Import from File'}
             </Button>
+
+            {importError && (
+              <p className="text-destructive text-center text-xs">
+                {importError}
+              </p>
+            )}
 
             <Button
               variant="outline"

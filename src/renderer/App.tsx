@@ -9,6 +9,7 @@ import type {
 import type { EditorState } from '@/types/history';
 import type { CapturePreviewParams } from '@/types/capture-preview';
 import { useAccentColor } from '@/renderer/hooks/useAccentColor';
+import { ToastProvider } from '@/renderer/components/ui/toast';
 
 const ScreenshotWindow = lazy(
   () => import('@/renderer/windows/screenshot-window')
@@ -162,15 +163,17 @@ function App() {
   };
 
   return (
-    <Suspense
-      fallback={
-        <div className="bg-background flex h-screen w-full items-center justify-center">
-          <div className="text-muted-foreground">Loading...</div>
-        </div>
-      }
-    >
-      {renderWindow()}
-    </Suspense>
+    <ToastProvider>
+      <Suspense
+        fallback={
+          <div className="bg-background flex h-screen w-full items-center justify-center">
+            <div className="text-muted-foreground">Loading...</div>
+          </div>
+        }
+      >
+        {renderWindow()}
+      </Suspense>
+    </ToastProvider>
   );
 }
 

@@ -1,6 +1,7 @@
-import { ipcMain, BrowserWindow, dialog, Notification, shell } from 'electron';
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron';
 import fs from 'fs';
 import { convertMp4ToGif } from '@/main/utils/ffmpeg';
+import { showNotification } from '@/main/utils/notifications';
 import {
   rememberSaveDirectory,
   resolveSaveDialogPath,
@@ -76,11 +77,10 @@ export function registerExportHandlers(): void {
         openInFinder,
       }: { durationSeconds: number; filePath?: string; openInFinder?: boolean }
     ): Promise<void> => {
-      const notification = new Notification({
+      showNotification({
         title: 'Export Complete',
         body: `Video exported successfully in ${formatExportDuration(durationSeconds)}`,
       });
-      notification.show();
 
       if (openInFinder && filePath) {
         shell.showItemInFolder(filePath);
