@@ -75,6 +75,7 @@ class RecordingOverlayModule: Module {
             window.ignoresMouseEvents = true
             window.hasShadow = false
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            window.isReleasedWhenClosed = false
             
             let overlayView = RecordingOverlayView(frame: screen.frame)
             

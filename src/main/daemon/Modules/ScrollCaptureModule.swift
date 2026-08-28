@@ -379,6 +379,7 @@ class ScrollCaptureModule: Module {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hasShadow = false
         window.sharingType = .none
+        window.isReleasedWhenClosed = false
         
         let boundaryView = ScrollCaptureBoundaryView(frame: NSRect(origin: .zero, size: windowFrame.size))
         window.contentView = boundaryView
