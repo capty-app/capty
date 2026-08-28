@@ -55,10 +55,22 @@ function execFFmpegWithAbort(
 
     let stderr = '';
     let lastReportedProgress = -1;
+    let timeoutId: NodeJS.Timeout;
+
+    const resetStallTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        proc.kill('SIGKILL');
+        reject(new Error('FFmpeg timeout'));
+      }, timeout);
+    };
+
+    resetStallTimer();
 
     proc.stderr?.on('data', (data: Buffer) => {
       const chunk = data.toString();
       stderr += chunk;
+      resetStallTimer();
 
       if (totalDuration && totalDuration > 0 && onProgress) {
         const currentTime = parseFFmpegProgress(chunk);
@@ -78,11 +90,6 @@ function execFFmpegWithAbort(
         }
       }
     });
-
-    const timeoutId = setTimeout(() => {
-      proc.kill('SIGKILL');
-      reject(new Error('FFmpeg timeout'));
-    }, timeout);
 
     const abortHandler = () => {
       clearTimeout(timeoutId);

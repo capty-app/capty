@@ -5,7 +5,7 @@
 # =============================================================================
 # This script builds a GPL FFmpeg universal binary for macOS with libx264
 # statically linked for H.264 encoding. The resulting binary is licensed
-# GPL-3.0, compatible with Capty's AGPL-3.0-only distribution.
+# GPL-3.0-or-later, compatible with Capty's AGPL-3.0-only distribution.
 #
 # Prerequisites:
 #   - Xcode Command Line Tools: xcode-select --install

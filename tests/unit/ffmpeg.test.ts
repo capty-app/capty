@@ -384,6 +384,49 @@ describe('FFmpeg Utilities', () => {
       expect(result.success).toBe(false);
       expect(result.message).toBe('Aborted');
     });
+
+    it('should not time out while ffmpeg keeps producing output', async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFs.existsSync.mockReturnValue(true);
+
+        let stderrListener: ((data: Buffer) => void) | undefined;
+        const kill = vi.fn();
+        mockSpawn.mockReturnValue({
+          stderr: {
+            on: vi.fn((event: string, listener: (data: Buffer) => void) => {
+              if (event === 'data') stderrListener = listener;
+            }),
+          },
+          on: vi.fn(),
+          kill,
+        });
+
+        const { trimVideo } = await import('@/main/utils/ffmpeg');
+        const resultPromise = trimVideo({
+          inputPath: '/input/video.mov',
+          outputPath: '/output/video.mp4',
+          startTime: 0,
+          endTime: 10,
+        });
+
+        for (let i = 0; i < 3; i++) {
+          await vi.advanceTimersByTimeAsync(250000);
+          stderrListener?.(Buffer.from('frame=100 time=00:04:10.00'));
+        }
+        expect(kill).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(300000);
+        expect(kill).toHaveBeenCalledWith('SIGKILL');
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.message).toBe('FFmpeg timeout');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('generateVideoThumbnail', () => {
