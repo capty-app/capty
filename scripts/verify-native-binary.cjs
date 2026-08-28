@@ -5,6 +5,7 @@ const ARCHITECTURES = ['arm64', 'x86_64'];
 const SMOKE_TEST_TIMEOUT = 10000;
 const REQUIRED_FFMPEG_FEATURES = {
   encoders: [
+    'libx264',
     'h264_videotoolbox',
     'hevc_videotoolbox',
     'prores_videotoolbox',
