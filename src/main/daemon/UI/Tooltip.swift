@@ -27,6 +27,7 @@ class TooltipWindow: NSWindow {
         ignoresMouseEvents = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         sharingType = .none
+        isReleasedWhenClosed = false
         
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 28))
         container.wantsLayer = true

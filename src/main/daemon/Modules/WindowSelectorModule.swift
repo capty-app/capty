@@ -293,6 +293,7 @@ class WindowSelectorUI {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hasShadow = false
+        window.isReleasedWhenClosed = false
         window.orderFront(nil)
         
         dimWindow = window
@@ -324,7 +325,8 @@ class WindowSelectorUI {
             window.ignoresMouseEvents = false
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             window.hasShadow = false
-            
+            window.isReleasedWhenClosed = false
+
             let overlayView = WindowSelectorOverlayView(frame: NSRect(
                 x: 0, y: 0,
                 width: windowFrame.width,

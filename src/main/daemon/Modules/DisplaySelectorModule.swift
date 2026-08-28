@@ -199,7 +199,8 @@ class DisplaySelectorUI {
             window.ignoresMouseEvents = false
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             window.hasShadow = false
-            
+            window.isReleasedWhenClosed = false
+
             let viewBounds = NSRect(x: 0, y: 0, width: screen.frame.width, height: screen.frame.height)
             let overlayView = DisplayOverlayView(frame: viewBounds)
             
