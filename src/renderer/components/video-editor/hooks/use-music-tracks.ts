@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MusicTrack } from '@/types/music';
 import { DEFAULT_MUSIC_TRACK_VOLUME } from '@/types/music';
 import type { SliceController } from './use-editor-history';
+import { resolveImportResult } from '../utils/import-result';
 import { useToast } from '@/renderer/hooks/useToast';
 
 interface UseMusicTracksProps {
@@ -137,24 +138,29 @@ export function useMusicTracks({
   }, [totalTimelineDuration, setWithoutHistory]);
 
   const handleAddMusicTrack = useCallback(async () => {
-    const result = (await window.ipcRenderer.invoke(
-      'video-editor:music:add'
-    )) as {
-      success: boolean;
-      fileName?: string;
-      name?: string;
-      originalDuration?: number;
-      error?: string;
-    };
+    const fallbackError = 'The audio file could not be added.';
+    const { result, error } = await resolveImportResult(
+      () =>
+        window.ipcRenderer.invoke('video-editor:music:add') as Promise<{
+          success: boolean;
+          fileName?: string;
+          name?: string;
+          originalDuration?: number;
+          error?: string;
+        }>,
+      fallbackError
+    );
 
-    if (!result.success || !result.fileName || !result.originalDuration) {
-      if (result.error && result.error !== 'Cancelled') {
-        toast({
-          variant: 'error',
-          title: "Couldn't add audio file",
-          description: result.error,
-        });
-      }
+    if (error) {
+      toast({
+        variant: 'error',
+        title: "Couldn't add audio file",
+        description: error,
+      });
+      return;
+    }
+
+    if (!result?.success || !result.fileName || !result.originalDuration) {
       return;
     }
 

@@ -11,22 +11,23 @@ export function resolveCaptureOutcome(
   filePath: string,
   interactive: boolean
 ): CaptureOutcome {
-  if (error || stderr.trim()) {
-    console.error('screencapture failed:', error?.message || stderr);
+  const stderrMessage = stderr.trim();
+  if (interactive && error && !stderrMessage && !fs.existsSync(filePath)) {
+    return 'cancelled';
+  }
+
+  const errorMessage = stderrMessage || error?.message;
+  if (errorMessage) {
+    console.error('screencapture failed:', errorMessage);
     showNotification({
       title: 'Screenshot Failed',
-      body:
-        stderr.trim() || error?.message || 'The screen could not be captured.',
+      body: errorMessage,
     });
     return 'failed';
   }
 
   if (fs.existsSync(filePath)) {
     return 'captured';
-  }
-
-  if (interactive) {
-    return 'cancelled';
   }
 
   showNotification({

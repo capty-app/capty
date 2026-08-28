@@ -48,7 +48,7 @@ describe('resolveCaptureOutcome', () => {
       new Error('boom'),
       '',
       '/tmp/shot.png',
-      true
+      false
     );
     expect(outcome).toBe('failed');
     expect(mockShowNotification).toHaveBeenCalledWith({
@@ -80,12 +80,44 @@ describe('resolveCaptureOutcome', () => {
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
 
-  it('treats a silent exit with no file as cancellation in interactive mode', async () => {
+  it('treats a non-zero exit with no file as cancellation in interactive mode', async () => {
+    mockFsExistsSync.mockReturnValue(false);
+    const { resolveCaptureOutcome } = await loadModule();
+    const outcome = resolveCaptureOutcome(
+      new Error('cancelled'),
+      '',
+      '/tmp/shot.png',
+      true
+    );
+    expect(outcome).toBe('cancelled');
+    expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
+  it('reports diagnostic stderr from an interactive failure', async () => {
+    mockFsExistsSync.mockReturnValue(false);
+    const { resolveCaptureOutcome } = await loadModule();
+    const outcome = resolveCaptureOutcome(
+      new Error('capture failed'),
+      'screencapture: cannot write file to intended destination',
+      '/tmp/shot.png',
+      true
+    );
+    expect(outcome).toBe('failed');
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: 'Screenshot Failed',
+      body: 'screencapture: cannot write file to intended destination',
+    });
+  });
+
+  it('treats a silent exit with no file as failure in interactive mode', async () => {
     mockFsExistsSync.mockReturnValue(false);
     const { resolveCaptureOutcome } = await loadModule();
     const outcome = resolveCaptureOutcome(null, '', '/tmp/shot.png', true);
-    expect(outcome).toBe('cancelled');
-    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(outcome).toBe('failed');
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: 'Screenshot Failed',
+      body: 'The screen could not be captured.',
+    });
   });
 
   it('treats a silent exit with no file as failure in non-interactive mode', async () => {
