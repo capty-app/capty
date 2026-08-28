@@ -4,7 +4,7 @@
 
 Capture anything on your Mac. Requires macOS 15 or later.
 
-<img width="3434" height="1928" alt="image" src="https://github.com/user-attachments/assets/2b00d1c6-fff4-49db-b44d-64d07466e8ae" />
+<img width="3434" height="1928" alt="image" src="https://github.com/user-attachments/assets/7b03f120-786a-44cc-86b4-92d3765228b4" />
 
 https://capty.app
 
