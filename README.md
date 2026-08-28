@@ -16,4 +16,4 @@ Capty builds its native binaries from source, so setup is a few steps beyond `bu
 
 Copyright (C) 2026 Capty — [GNU AGPL v3.0](LICENSE), without warranty of any kind.
 
-Uses [FFmpeg](https://ffmpeg.org/) under the LGPL v2.1. For terms other than the AGPL, contact us at https://capty.app.
+Uses [FFmpeg](https://ffmpeg.org/) with [x264](https://www.videolan.org/developers/x264.html) under the GPL v3 or later. For terms other than the AGPL, contact us at https://capty.app.

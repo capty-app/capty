@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # =============================================================================
-# FFmpeg LGPL Build Script for Capty
+# FFmpeg GPL Build Script for Capty
 # =============================================================================
-# This script builds an LGPL-compliant FFmpeg universal binary for macOS.
-# The resulting binary uses VideoToolbox for H.264 encoding instead of libx264,
-# making it safe for commercial, closed-source distribution.
+# This script builds a GPL FFmpeg universal binary for macOS with libx264
+# statically linked for H.264 encoding. The resulting binary is licensed
+# GPL-3.0-or-later, compatible with Capty's AGPL-3.0-only distribution.
 #
 # Prerequisites:
 #   - Xcode Command Line Tools: xcode-select --install
@@ -24,6 +24,9 @@ set -e
 FFMPEG_VERSION="7.1"
 FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
 FFMPEG_SHA256="40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6"
+X264_COMMIT="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
+X264_URL="https://code.videolan.org/videolan/x264/-/archive/${X264_COMMIT}/x264-${X264_COMMIT}.tar.bz2"
+X264_SHA256="6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224"
 BUILD_DIR="/tmp/ffmpeg-build-$$"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -79,17 +82,61 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Download and extract FFmpeg source
-download_ffmpeg() {
+# Download FFmpeg and x264 sources
+download_sources() {
     log_info "Downloading FFmpeg ${FFMPEG_VERSION}..."
-    
+
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
-    
+
     curl --fail --show-error --location --output ffmpeg.tar.xz "$FFMPEG_URL"
     printf '%s  %s\n' "$FFMPEG_SHA256" ffmpeg.tar.xz | shasum -a 256 --check -
+
+    log_info "Downloading x264 (${X264_COMMIT})..."
+
+    curl --fail --show-error --location --output x264.tar.bz2 "$X264_URL"
+    printf '%s  %s\n' "$X264_SHA256" x264.tar.bz2 | shasum -a 256 --check -
+}
+
+# Extract a clean FFmpeg source tree
+extract_ffmpeg() {
+    cd "$BUILD_DIR"
+    rm -rf "ffmpeg-${FFMPEG_VERSION}"
     tar xf ffmpeg.tar.xz
     cd "ffmpeg-${FFMPEG_VERSION}"
+}
+
+# Build static libx264 for a specific architecture
+build_x264_for_arch() {
+    local arch=$1
+    local host
+
+    log_info "Building x264 for $arch..."
+
+    if [ "$arch" = "arm64" ]; then
+        host="aarch64-apple-darwin"
+    else
+        host="x86_64-apple-darwin"
+    fi
+
+    cd "$BUILD_DIR"
+    rm -rf "x264-${X264_COMMIT}"
+    tar xjf x264.tar.bz2
+    cd "x264-${X264_COMMIT}"
+
+    ./configure \
+        --prefix="$BUILD_DIR/x264-install-$arch" \
+        --host="$host" \
+        --enable-static \
+        --disable-cli \
+        --disable-opencl \
+        --extra-cflags="-arch $arch -mmacosx-version-min=11.0" \
+        --extra-ldflags="-arch $arch -mmacosx-version-min=11.0"
+
+    make -j"$(sysctl -n hw.ncpu)"
+    make install
+
+    log_info "x264 build for $arch complete."
 }
 
 # Build for a specific architecture
@@ -115,7 +162,7 @@ build_for_arch() {
     fi
     
     # Configure
-    ./configure \
+    PKG_CONFIG_PATH="$BUILD_DIR/x264-install-$arch/lib/pkgconfig" ./configure \
         --prefix="$BUILD_DIR/install-$arch" \
         --enable-cross-compile \
         --arch="$arch" \
@@ -124,9 +171,9 @@ build_for_arch() {
         --disable-shared \
         --disable-autodetect \
         --enable-zlib \
-        --disable-gpl \
+        --enable-gpl \
         --disable-nonfree \
-        --disable-libx264 \
+        --enable-libx264 \
         --disable-libx265 \
         --disable-libvpx \
         --disable-libaom \
@@ -142,6 +189,7 @@ build_for_arch() {
         --cc="clang" \
         --extra-cflags="$extra_cflags" \
         --extra-ldflags="$extra_ldflags" \
+        --enable-encoder=libx264 \
         --enable-encoder=h264_videotoolbox \
         --enable-encoder=hevc_videotoolbox \
         --enable-encoder=prores_videotoolbox \
@@ -213,41 +261,43 @@ create_universal_binary() {
     file "$OUTPUT_DIR/ffmpeg"
     lipo -info "$OUTPUT_DIR/ffmpeg"
     
-    # Check license compliance
+    # Check license configuration
     log_info "Checking license configuration..."
     "$OUTPUT_DIR/ffmpeg" -version 2>&1 | head -5
-    
-    # Verify no GPL in configuration
-    if "$OUTPUT_DIR/ffmpeg" -version 2>&1 | grep -q "enable-gpl"; then
-        log_error "WARNING: GPL flag detected! This build may not be LGPL-compliant."
+
+    if ! "$OUTPUT_DIR/ffmpeg" -version 2>&1 | grep -q "enable-gpl"; then
+        log_error "GPL flag missing! libx264 requires a build configured with --enable-gpl."
         exit 1
     fi
-    
-    log_info "License check passed - build is LGPL-compliant."
+
+    if ! "$OUTPUT_DIR/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -q "libx264"; then
+        log_error "libx264 encoder missing from the build!"
+        exit 1
+    fi
+
+    log_info "License check passed - GPL build with libx264."
 }
 
 # Main build process
 main() {
-    log_info "=== FFmpeg LGPL Build Script for Capty ==="
-    log_info "Building FFmpeg ${FFMPEG_VERSION} for macOS (universal binary)"
+    log_info "=== FFmpeg GPL Build Script for Capty ==="
+    log_info "Building FFmpeg ${FFMPEG_VERSION} + x264 for macOS (universal binary)"
     log_info ""
-    
+
     check_prerequisites
-    download_ffmpeg
-    
-    # Build for both architectures
+    download_sources
+
+    build_x264_for_arch "arm64"
+    build_x264_for_arch "x86_64"
+
+    extract_ffmpeg
     build_for_arch "arm64"
-    
-    # Re-extract for clean x86_64 build
-    cd "$BUILD_DIR"
-    rm -rf "ffmpeg-${FFMPEG_VERSION}"
-    tar xf ffmpeg.tar.xz
-    cd "ffmpeg-${FFMPEG_VERSION}"
-    
+
+    extract_ffmpeg
     build_for_arch "x86_64"
-    
+
     create_universal_binary
-    
+
     log_info ""
     log_info "=== Build Complete ==="
     log_info "Universal FFmpeg binary created at:"
@@ -255,10 +305,7 @@ main() {
     log_info ""
     log_info "Binary size: $(du -h "$OUTPUT_DIR/ffmpeg" | cut -f1)"
     log_info ""
-    log_info "Next steps:"
-    log_info "  1. Test the binary: $OUTPUT_DIR/ffmpeg -version"
-    log_info "  2. Update electron-builder.json5 to include the new binary"
-    log_info "  3. Remove @ffmpeg-installer/ffmpeg from package.json (optional)"
+    log_info "Verify with: $OUTPUT_DIR/ffmpeg -version"
 }
 
 main "$@"

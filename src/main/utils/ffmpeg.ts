@@ -13,6 +13,8 @@ import { getNativeBinaryPath } from './paths';
 
 const execFileAsync = promisify(execFile);
 
+const X264_PRESET = 'medium';
+
 export type FFmpegProgressCallback = (progress: number) => void;
 
 function parseFFmpegProgress(output: string): number | null {
@@ -53,10 +55,22 @@ function execFFmpegWithAbort(
 
     let stderr = '';
     let lastReportedProgress = -1;
+    let timeoutId: NodeJS.Timeout;
+
+    const resetStallTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        proc.kill('SIGKILL');
+        reject(new Error('FFmpeg timeout'));
+      }, timeout);
+    };
+
+    resetStallTimer();
 
     proc.stderr?.on('data', (data: Buffer) => {
       const chunk = data.toString();
       stderr += chunk;
+      resetStallTimer();
 
       if (totalDuration && totalDuration > 0 && onProgress) {
         const currentTime = parseFFmpegProgress(chunk);
@@ -76,11 +90,6 @@ function execFFmpegWithAbort(
         }
       }
     });
-
-    const timeoutId = setTimeout(() => {
-      proc.kill('SIGKILL');
-      reject(new Error('FFmpeg timeout'));
-    }, timeout);
 
     const abortHandler = () => {
       clearTimeout(timeoutId);
@@ -232,13 +241,19 @@ function getOutputEncodingArgs(
       filters: mp4Filters,
       args: [
         '-c:v',
-        'h264_videotoolbox',
+        'libx264',
+        '-preset',
+        X264_PRESET,
         '-profile:v',
         'high',
         '-level',
         h264Level,
         '-b:v',
         `${socialOptions.bitrate}k`,
+        '-maxrate',
+        `${socialOptions.bitrate}k`,
+        '-bufsize',
+        `${socialOptions.bitrate * 2}k`,
         '-coder',
         'cabac',
         '-pix_fmt',
@@ -259,17 +274,15 @@ function getOutputEncodingArgs(
     };
   }
 
-  const qualityValue = getVideoToolboxQuality(
-    crf as '18' | '23' | '28' | string
-  );
-
   return {
     filters: mp4Filters,
     args: [
       '-c:v',
-      'h264_videotoolbox',
-      '-q:v',
-      qualityValue,
+      'libx264',
+      '-preset',
+      X264_PRESET,
+      '-crf',
+      crf,
       '-pix_fmt',
       'yuv420p',
       '-force_key_frames',
@@ -282,19 +295,6 @@ function getOutputEncodingArgs(
       '+faststart',
     ],
   };
-}
-
-function getVideoToolboxQuality(crf: string): string {
-  switch (crf) {
-    case '18':
-      return '85';
-    case '23':
-      return '70';
-    case '28':
-      return '55';
-    default:
-      return '85';
-  }
 }
 
 export interface FFmpegResult {
@@ -600,53 +600,8 @@ export async function processVideoSegments(
 
       args.push('-r', fps);
 
-      if (socialOptions) {
-        args.push(
-          '-c:v',
-          'h264_videotoolbox',
-          '-profile:v',
-          'high',
-          '-level',
-          '4.2',
-          '-b:v',
-          `${socialOptions.bitrate}k`,
-          '-coder',
-          'cabac',
-          '-pix_fmt',
-          'yuv420p',
-          '-g',
-          String(parseInt(fps) * 2),
-          '-bf',
-          '2',
-          '-c:a',
-          'aac_at',
-          '-b:a',
-          '256k',
-          '-ar',
-          '48000',
-          '-y',
-          segmentPath
-        );
-      } else {
-        const qualityValue = getVideoToolboxQuality(crf);
-
-        args.push(
-          '-c:v',
-          'h264_videotoolbox',
-          '-q:v',
-          qualityValue,
-          '-pix_fmt',
-          'yuv420p',
-          '-force_key_frames',
-          'expr:eq(t,0)',
-          '-c:a',
-          'aac_at',
-          '-b:a',
-          '192k',
-          '-y',
-          segmentPath
-        );
-      }
+      const encoding = getOutputEncodingArgs(crf, [], fps, socialOptions);
+      args.push(...encoding.args, '-y', segmentPath);
 
       const segmentProgressCallback = onProgress
         ? (segmentProgress: number) => {

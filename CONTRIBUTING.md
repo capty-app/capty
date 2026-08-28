@@ -26,7 +26,7 @@ The native binaries are not committed to the repository. Build them once before 
 ```
 
 - `build-daemon.sh` — the unified Swift daemon providing all native functionality
-- `build-ffmpeg.sh` — LGPL-compliant FFmpeg, compiled from source, takes a while
+- `build-ffmpeg.sh` — GPL FFmpeg with libx264, compiled from source, takes a while
 - `build-whisper.sh` — whisper.cpp, used for transcription
 
 Then start the app:

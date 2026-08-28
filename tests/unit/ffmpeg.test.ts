@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ChildProcess } from 'child_process';
-import type { VideoExportOptions } from '@/types/video';
+import type { VideoExportOptions, VideoQualityPreset } from '@/types/video';
 
 // Mock child_process
 const mockSpawn = vi.fn();
@@ -228,7 +228,9 @@ describe('FFmpeg Utilities', () => {
 
       // Check output codec
       expect(args).toContain('-c:v');
-      expect(args).toContain('h264_videotoolbox');
+      expect(args).toContain('libx264');
+      expect(args).toContain('-preset');
+      expect(args[args.indexOf('-preset') + 1]).toBe('medium');
 
       // Check output file
       expect(args).toContain('/output/video.mp4');
@@ -289,9 +291,43 @@ describe('FFmpeg Utilities', () => {
 
       const args = mockSpawn.mock.calls[0][1];
 
-      // Check quality value (web-low = 25% quality -> CRF ~26 -> VideoToolbox quality 85)
-      expect(args).toContain('-q:v');
-      expect(args[args.indexOf('-q:v') + 1]).toBe('85');
+      // Check quality value (web-low = 25% quality -> CRF 26)
+      expect(args).toContain('-crf');
+      expect(args[args.indexOf('-crf') + 1]).toBe('26');
+    });
+
+    it('should map quality presets to CRF values', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(createMockProcess(0));
+
+      const presets: Array<[VideoQualityPreset, string]> = [
+        ['studio', '18'],
+        ['social', '21'],
+        ['web', '23'],
+        ['web-low', '26'],
+      ];
+
+      const { trimVideo } = await import('@/main/utils/ffmpeg');
+
+      for (const [qualityPreset] of presets) {
+        await trimVideo({
+          inputPath: '/input/video.mov',
+          outputPath: '/output/video.mp4',
+          startTime: 0,
+          endTime: 10,
+          exportOptions: {
+            format: 'mp4',
+            resolution: 'original',
+            qualityPreset,
+            frameRate: '60',
+          },
+        });
+      }
+
+      presets.forEach(([, crf], index) => {
+        const args = mockSpawn.mock.calls[index][1];
+        expect(args[args.indexOf('-crf') + 1]).toBe(crf);
+      });
     });
 
     it('should return success when output file is created', async () => {
@@ -347,6 +383,49 @@ describe('FFmpeg Utilities', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toBe('Aborted');
+    });
+
+    it('should not time out while ffmpeg keeps producing output', async () => {
+      vi.useFakeTimers();
+
+      try {
+        mockFs.existsSync.mockReturnValue(true);
+
+        let stderrListener: ((data: Buffer) => void) | undefined;
+        const kill = vi.fn();
+        mockSpawn.mockReturnValue({
+          stderr: {
+            on: vi.fn((event: string, listener: (data: Buffer) => void) => {
+              if (event === 'data') stderrListener = listener;
+            }),
+          },
+          on: vi.fn(),
+          kill,
+        });
+
+        const { trimVideo } = await import('@/main/utils/ffmpeg');
+        const resultPromise = trimVideo({
+          inputPath: '/input/video.mov',
+          outputPath: '/output/video.mp4',
+          startTime: 0,
+          endTime: 10,
+        });
+
+        for (let i = 0; i < 3; i++) {
+          await vi.advanceTimersByTimeAsync(250000);
+          stderrListener?.(Buffer.from('frame=100 time=00:04:10.00'));
+        }
+        expect(kill).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(300000);
+        expect(kill).toHaveBeenCalledWith('SIGKILL');
+
+        const result = await resultPromise;
+        expect(result.success).toBe(false);
+        expect(result.message).toBe('FFmpeg timeout');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -678,6 +757,10 @@ describe('FFmpeg Utilities', () => {
       // Check bitrate
       expect(args).toContain('-b:v');
       expect(args[args.indexOf('-b:v') + 1]).toBe('15000k');
+      expect(args).toContain('-maxrate');
+      expect(args[args.indexOf('-maxrate') + 1]).toBe('15000k');
+      expect(args).toContain('-bufsize');
+      expect(args[args.indexOf('-bufsize') + 1]).toBe('30000k');
     });
 
     it('should use H.264 High Profile with CABAC for social media preset', async () => {
@@ -716,6 +799,37 @@ describe('FFmpeg Utilities', () => {
       // Check CABAC entropy coding
       expect(args).toContain('-coder');
       expect(args[args.indexOf('-coder') + 1]).toBe('cabac');
+    });
+
+    it('should use level 5.2 for 4k social media preset', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(createMockProcess(0));
+
+      const exportOptions: VideoExportOptions = {
+        format: 'mp4',
+        preset: 'social',
+        resolution: '4k',
+        qualityPreset: 'social',
+        frameRate: '60',
+        socialPreset: {
+          resolution: '4k',
+          frameRate: '60',
+          bitrate: 45000,
+        },
+      };
+
+      const { trimVideo } = await import('@/main/utils/ffmpeg');
+      await trimVideo({
+        inputPath: '/input/video.mov',
+        outputPath: '/output/video.mp4',
+        startTime: 0,
+        endTime: 10,
+        exportOptions,
+      });
+
+      const args = mockSpawn.mock.calls[0][1];
+
+      expect(args[args.indexOf('-level') + 1]).toBe('5.2');
     });
 
     it('should set GOP size and B-frames for social media preset', async () => {
@@ -864,6 +978,45 @@ describe('FFmpeg Utilities', () => {
       expect(firstSegmentArgs).toContain('-coder');
       expect(firstSegmentArgs[firstSegmentArgs.indexOf('-coder') + 1]).toBe(
         'cabac'
+      );
+      expect(firstSegmentArgs).toContain('-maxrate');
+      expect(firstSegmentArgs[firstSegmentArgs.indexOf('-level') + 1]).toBe(
+        '4.2'
+      );
+    });
+
+    it('should use level 5.2 for 4k multi-segment social export', async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockSpawn.mockReturnValue(createMockProcess(0));
+
+      const exportOptions: VideoExportOptions = {
+        format: 'mp4',
+        preset: 'social',
+        resolution: '4k',
+        qualityPreset: 'social',
+        frameRate: '60',
+        socialPreset: {
+          resolution: '4k',
+          frameRate: '60',
+          bitrate: 45000,
+        },
+      };
+
+      const { processVideoSegments } = await import('@/main/utils/ffmpeg');
+      await processVideoSegments({
+        inputPath: '/input/video.mov',
+        outputPath: '/output/video.mp4',
+        segments: [
+          { start: 0, end: 5 },
+          { start: 10, end: 15 },
+        ],
+        exportOptions,
+      });
+
+      const firstSegmentArgs = mockSpawn.mock.calls[0][1];
+      expect(firstSegmentArgs).toContain('libx264');
+      expect(firstSegmentArgs[firstSegmentArgs.indexOf('-level') + 1]).toBe(
+        '5.2'
       );
     });
   });
