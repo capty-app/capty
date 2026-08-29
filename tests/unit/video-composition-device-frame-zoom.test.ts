@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const renderDeviceFrameMock = vi.hoisted(() =>
+  vi.fn((ctx: { currentScale: number }) => ctx.currentScale)
+);
 
 vi.mock(
   '../../src/renderer/components/video-editor/composition/device-frame-canvas-renderer',
@@ -12,7 +16,7 @@ vi.mock(
       screenHeight: 2000,
       screenCornerRadius: 56,
     }),
-    renderDeviceFrame: () => {},
+    renderDeviceFrame: renderDeviceFrameMock,
   })
 );
 
@@ -22,6 +26,8 @@ import type { VideoWallpaperSettings } from '../../src/types/video-wallpaper';
 
 interface MockContext {
   translateCalls: Array<[number, number]>;
+  currentScale: number;
+  scaleStack: number[];
   save: () => void;
   restore: () => void;
   clearRect: (...args: number[]) => void;
@@ -29,7 +35,7 @@ interface MockContext {
   roundRect: (...args: number[]) => void;
   clip: () => void;
   drawImage: (...args: unknown[]) => void;
-  scale: (...args: number[]) => void;
+  scale: (x: number, y: number) => void;
   createLinearGradient: () => { addColorStop: () => void };
   fillRect: (...args: number[]) => void;
   translate: (x: number, y: number) => void;
@@ -38,14 +44,22 @@ interface MockContext {
 function createMockContext(): MockContext {
   return {
     translateCalls: [],
-    save: () => {},
-    restore: () => {},
+    currentScale: 1,
+    scaleStack: [],
+    save: function () {
+      this.scaleStack.push(this.currentScale);
+    },
+    restore: function () {
+      this.currentScale = this.scaleStack.pop() ?? 1;
+    },
     clearRect: () => {},
     beginPath: () => {},
     roundRect: () => {},
     clip: () => {},
     drawImage: () => {},
-    scale: () => {},
+    scale: function (x: number) {
+      this.currentScale *= x;
+    },
     createLinearGradient: () => ({ addColorStop: () => {} }),
     fillRect: () => {},
     translate: function (x: number, y: number) {
@@ -55,7 +69,11 @@ function createMockContext(): MockContext {
 }
 
 describe('VideoCompositionEngine device frame zoom', () => {
-  it('applies zoom transform from frame origin', () => {
+  beforeEach(() => {
+    renderDeviceFrameMock.mockClear();
+  });
+
+  it('applies the video zoom transform to the device frame', () => {
     const wallpaper: VideoWallpaperSettings = {
       enabled: true,
       gradient: null,
@@ -107,5 +125,8 @@ describe('VideoCompositionEngine device frame zoom', () => {
     );
 
     expect(ctx.translateCalls[0]).toEqual([50, 50]);
+    expect(renderDeviceFrameMock).toHaveBeenCalledOnce();
+    expect(renderDeviceFrameMock.mock.calls[0]?.slice(2, 4)).toEqual([0, 0]);
+    expect(renderDeviceFrameMock.mock.results[0]?.value).toBe(2);
   });
 });
