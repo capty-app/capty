@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockExistsSync = vi.fn();
+const mockRealpathSync = vi.fn((filePath: string) => filePath);
 const mockShowOpenDialog = vi.fn();
 const mockGetPrimaryDisplay = vi.fn(() => ({
   workAreaSize: { width: 1920, height: 1080 },
@@ -59,8 +60,12 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('fs', () => ({
-  default: { existsSync: (...a: unknown[]) => mockExistsSync(...a) },
+  default: {
+    existsSync: (...a: unknown[]) => mockExistsSync(...a),
+    realpathSync: (...a: unknown[]) => mockRealpathSync(...(a as [string])),
+  },
   existsSync: (...a: unknown[]) => mockExistsSync(...a),
+  realpathSync: (...a: unknown[]) => mockRealpathSync(...(a as [string])),
 }));
 
 vi.mock('@/main/utils/env', () => ({
@@ -76,6 +81,7 @@ describe('window-manager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    mockRealpathSync.mockImplementation((filePath: string) => filePath);
     browserWindows.splice(0);
     MockBrowserWindow.instances.splice(0);
     MockBrowserWindow.webContentsCounter = 0;
@@ -94,9 +100,14 @@ describe('window-manager', () => {
       mockExistsSync.mockReturnValue(true);
       const m = await import('@/main/capture/video/window-manager');
       const win = m.createVideoEditorWindow('/path/video.mov');
+      const { getMediaPathForSender } =
+        await import('@/main/capture/video/media-sources');
       expect(win).toBeDefined();
       expect(browserWindows.length).toBe(1);
       expect(m.getVideoEditorWindowsCount()).toBe(1);
+      expect(
+        getMediaPathForSender(browserWindows[0].webContents.id, 'video')
+      ).toBe('/path/video.mov');
     });
 
     it('uses project recording path when path is a project folder', async () => {
@@ -106,6 +117,37 @@ describe('window-manager', () => {
       expect(win).toBeDefined();
       const data = m.getWindowData(browserWindows[0].webContents.id);
       expect(data?.filePath).toBe('/path/Rec.capty/recording.mov');
+    });
+
+    it('rejects project recording symlinks outside the project folder', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockRealpathSync.mockImplementation((filePath: string) => {
+        if (filePath.endsWith('/recording.mov')) return '/private/video.mov';
+        return filePath;
+      });
+      const m = await import('@/main/capture/video/window-manager');
+
+      expect(m.createVideoEditorWindow('/path/Rec.capty')).toBeUndefined();
+      expect(browserWindows).toHaveLength(0);
+    });
+
+    it('pins canonical video paths and rejects camera symlink escapes', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockRealpathSync.mockImplementation((filePath: string) => {
+        if (filePath === '/path/video.mov') return '/media/video.mov';
+        if (filePath === '/path/video.camera.mov') {
+          return '/private/camera.mov';
+        }
+        return filePath;
+      });
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/path/video.mov');
+      const data = m.getWindowData(browserWindows[0].webContents.id);
+
+      expect(data?.mediaPaths).toEqual({
+        video: '/media/video.mov',
+        camera: null,
+      });
     });
   });
 
@@ -149,6 +191,7 @@ describe('window-manager', () => {
       const fake = {
         window: {} as never,
         filePath: '/a.mov',
+        mediaPaths: { video: '/a.mov', camera: null },
         isClosingConfirmed: false,
         isExporting: false,
       };
@@ -233,8 +276,11 @@ describe('window-manager', () => {
       m.createVideoEditorWindow('/p/video.mov');
       const win = browserWindows[0];
       const id = win.webContents.id;
+      const { getMediaPathForSender } =
+        await import('@/main/capture/video/media-sources');
       (win.windowHandlers['closed'] || []).forEach(cb => cb());
       expect(m.getWindowData(id)).toBeUndefined();
+      expect(getMediaPathForSender(id, 'video')).toBeNull();
     });
   });
 });

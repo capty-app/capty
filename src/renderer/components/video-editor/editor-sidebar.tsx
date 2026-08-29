@@ -13,6 +13,7 @@ import type { ZoomSegment, ZoomSettings } from '@/types/zoom';
 import type { CameraStyle } from '@/types/camera';
 import type { AudioStyle } from '@/types/audio';
 import type { MusicTrack } from '@/types/music';
+import type { EqualizerSettings } from '@/types/equalizer';
 import type { KeyboardStyle } from '@/types/keyboard';
 import type {
   SubtitleStyle,
@@ -77,6 +78,12 @@ interface EditorSidebarProps {
   hasMicAudio: boolean;
   hasKeyboardData: boolean;
   musicTracks: MusicTrack[];
+  equalizer: EqualizerSettings | null;
+  equalizerEnabled: boolean;
+  isEqualizerLoading: boolean;
+  hasEqualizerError: boolean;
+  onEqualizerEnabledChange: (enabled: boolean) => void;
+  onEqualizerChange: (settings: EqualizerSettings) => void;
   onAddMusicTrack: () => void;
   onRemoveMusicTrack: (id: string) => void;
   onUpdateMusicTrack: (id: string, updates: Partial<MusicTrack>) => void;
@@ -157,6 +164,12 @@ export default function EditorSidebar({
   hasMicAudio,
   hasKeyboardData,
   musicTracks,
+  equalizer,
+  equalizerEnabled,
+  isEqualizerLoading,
+  hasEqualizerError,
+  onEqualizerEnabledChange,
+  onEqualizerChange,
   onAddMusicTrack,
   onRemoveMusicTrack,
   onUpdateMusicTrack,
@@ -262,6 +275,12 @@ export default function EditorSidebar({
             onStopDemo={onStopDemo}
             isDemoPlaying={isDemoPlaying}
             musicTracks={musicTracks}
+            equalizer={equalizer}
+            equalizerEnabled={equalizerEnabled}
+            isEqualizerLoading={isEqualizerLoading}
+            hasEqualizerError={hasEqualizerError}
+            onEqualizerEnabledChange={onEqualizerEnabledChange}
+            onEqualizerChange={onEqualizerChange}
             onAddMusicTrack={onAddMusicTrack}
             onRemoveMusicTrack={onRemoveMusicTrack}
             onUpdateMusicTrack={onUpdateMusicTrack}

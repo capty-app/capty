@@ -50,9 +50,7 @@ function createDefaultSegment(duration: number): Segment {
   };
 }
 
-export function useVideoClipboardExport(
-  filePath: string
-): UseVideoClipboardExportReturn {
+export function useVideoClipboardExport(): UseVideoClipboardExportReturn {
   const [isCopying, setIsCopying] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [copyProgress, setCopyProgress] = useState(0);
@@ -78,8 +76,7 @@ export function useVideoClipboardExport(
 
     try {
       const data = (await window.ipcRenderer.invoke(
-        'capture-preview:load-export-data',
-        filePath
+        'capture-preview:load-export-data'
       )) as ExportData | null;
 
       if (!data) {
@@ -171,7 +168,7 @@ export function useVideoClipboardExport(
       setCopyProgress(0);
       exporterRef.current = null;
     }
-  }, [filePath, isCopying, resetState]);
+  }, [isCopying, resetState]);
 
   return { isCopying, isDone, copyProgress, startExport, cancelExport };
 }

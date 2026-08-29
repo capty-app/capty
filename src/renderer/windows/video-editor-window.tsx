@@ -23,11 +23,20 @@ import {
   useMusicTracks,
   buildBuiltInMusicTracks,
   useMusicPlayback,
+  useEqualizerAnalysis,
+  useEqualizerSegments,
   DEFAULT_PIXELS_PER_SECOND,
   getFitToViewPixelsPerSecond,
+  getTotalTimelineDuration as calculateTotalTimelineDuration,
 } from '@/renderer/components/video-editor';
 import type { VideoEditorSidebarShortcuts } from '@/types/settings';
 import type { MusicTrack as MusicTrackType } from '@/types/music';
+import type { EqualizerSettings } from '@/types/equalizer';
+import {
+  DEFAULT_EQUALIZER_SETTINGS,
+  getActiveEqualizerSegment,
+  migrateLegacyEqualizer,
+} from '@/types/equalizer';
 import {
   DEFAULT_DRAWING_TOOL_SETTINGS,
   MIN_DRAWING_SEGMENT_DURATION,
@@ -206,6 +215,28 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     slice: history.musicTracks,
   });
 
+  const equalizerControl = useEqualizerSegments({
+    totalTimelineDuration: playback.totalTimelineDuration,
+    activateSidebarTab,
+    slice: history.equalizerSegments,
+  });
+
+  const activeEqualizer = useMemo(
+    () =>
+      getActiveEqualizerSegment(
+        equalizerControl.equalizerSegments,
+        playback.effectiveTimelinePosition
+      ),
+    [equalizerControl.equalizerSegments, playback.effectiveTimelinePosition]
+  );
+
+  const equalizerAnalysis = useEqualizerAnalysis({
+    enabled: equalizerControl.equalizerSegments.length > 0,
+    segments: equalizerControl.equalizerSegments,
+    tracks: musicControl.musicTracks,
+    sourceVideoPath: filePath,
+  });
+
   useMusicPlayback({
     musicTracks: musicControl.musicTracks,
     timelinePosition: playback.effectiveTimelinePosition,
@@ -213,6 +244,48 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     systemAudioPath: editorData.systemAudioPath,
     micAudioPath: editorData.micAudioPath,
   });
+
+  const handleEqualizerChange = useCallback(
+    (settings: EqualizerSettings) => {
+      const id = equalizerControl.selectedEqualizerId;
+      if (!id) return;
+      equalizerControl.handleUpdateEqualizer(id, settings);
+    },
+    [equalizerControl]
+  );
+
+  const handleEqualizerChangeLive = useCallback(
+    (settings: EqualizerSettings) => {
+      const id = activeEqualizer?.id;
+      if (!id) return;
+      equalizerControl.handleUpdateEqualizerLive(id, settings);
+    },
+    [activeEqualizer?.id, equalizerControl]
+  );
+
+  useEffect(() => {
+    const activeTrackIds = new Set(
+      musicControl.musicTracks
+        .filter(track => track.enabled)
+        .map(track => track.id)
+    );
+    const hasInvalidSource = equalizerControl.equalizerSegments.some(
+      segment => segment.source !== 'mix' && !activeTrackIds.has(segment.source)
+    );
+    if (!hasInvalidSource) return;
+
+    history.equalizerSegments.set(previous =>
+      previous.map(segment =>
+        segment.source !== 'mix' && !activeTrackIds.has(segment.source)
+          ? { ...segment, source: 'mix' }
+          : segment
+      )
+    );
+  }, [
+    equalizerControl.equalizerSegments,
+    history.equalizerSegments,
+    musicControl.musicTracks,
+  ]);
 
   const handleTimelineRangesAdjust = useCallback(
     (
@@ -237,12 +310,18 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
           nextSegments,
           zoomSegments: zoomControl.zoomSegments,
           drawingSegments: drawingControl.drawingSegments,
+          equalizerSegments: equalizerControl.equalizerSegments,
           adjustment,
           drawingMinDuration: MIN_DRAWING_SEGMENT_DURATION,
         })
       );
     },
-    [drawingControl.drawingSegments, history, zoomControl.zoomSegments]
+    [
+      drawingControl.drawingSegments,
+      equalizerControl.equalizerSegments,
+      history,
+      zoomControl.zoomSegments,
+    ]
   );
 
   const segmentOps = useSegmentOperations({
@@ -296,6 +375,8 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         subtitleStyle: editorData.subtitleStyle,
         firstFrame: firstFrameControl.firstFrame,
         musicTracks: musicControl.musicTracks,
+        equalizerSegments: equalizerControl.equalizerSegments,
+        getEqualizerTrackData: equalizerAnalysis.getTrackData,
         uploadToCloud,
       });
     },
@@ -311,6 +392,8 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
       drawingControl.drawingSegments,
       firstFrameControl.firstFrame,
       musicControl.musicTracks,
+      equalizerControl.equalizerSegments,
+      equalizerAnalysis.getTrackData,
       uploadToCloud,
     ]
   );
@@ -366,6 +449,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         wallpaper,
         firstFrame: firstFrameControl.firstFrame,
         musicTracks: musicControl.musicTracks,
+        equalizerSegments: equalizerControl.equalizerSegments,
         exportSettings: videoExport.exportSettings,
         timelineZoom: timelineZoomState.pixelsPerSecond,
         sidebarOpen: isSidebarOpen,
@@ -399,7 +483,8 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     zoomControl.clearZoomSelection();
     drawingControl.clearDrawingSelection();
     musicControl.clearMusicSelection();
-  }, [segmentOps, zoomControl, drawingControl, musicControl]);
+    equalizerControl.clearEqualizerSelection();
+  }, [segmentOps, zoomControl, drawingControl, musicControl, equalizerControl]);
 
   const handleSegmentSelect = useCallback(
     (segmentId: string | null) => {
@@ -408,9 +493,10 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         zoomControl.clearZoomSelection();
         drawingControl.clearDrawingSelection();
         musicControl.clearMusicSelection();
+        equalizerControl.clearEqualizerSelection();
       }
     },
-    [segmentOps, zoomControl, drawingControl, musicControl]
+    [segmentOps, zoomControl, drawingControl, musicControl, equalizerControl]
   );
 
   const handleZoomSelect = useCallback(
@@ -420,9 +506,10 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         segmentOps.setSelectedSegmentId(null);
         drawingControl.clearDrawingSelection();
         musicControl.clearMusicSelection();
+        equalizerControl.clearEqualizerSelection();
       }
     },
-    [zoomControl, segmentOps, drawingControl, musicControl]
+    [zoomControl, segmentOps, drawingControl, musicControl, equalizerControl]
   );
 
   const handleDrawingSelect = useCallback(
@@ -432,10 +519,18 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         segmentOps.setSelectedSegmentId(null);
         zoomControl.clearZoomSelection();
         musicControl.clearMusicSelection();
+        equalizerControl.clearEqualizerSelection();
         activateSidebarTab('drawing');
       }
     },
-    [drawingControl, segmentOps, zoomControl, musicControl, activateSidebarTab]
+    [
+      drawingControl,
+      segmentOps,
+      zoomControl,
+      musicControl,
+      equalizerControl,
+      activateSidebarTab,
+    ]
   );
 
   const handleAnnotationAdded = useCallback((tool: VideoDrawingTool) => {
@@ -452,9 +547,23 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         segmentOps.setSelectedSegmentId(null);
         zoomControl.clearZoomSelection();
         drawingControl.clearDrawingSelection();
+        equalizerControl.clearEqualizerSelection();
       }
     },
-    [musicControl, segmentOps, zoomControl, drawingControl]
+    [musicControl, segmentOps, zoomControl, drawingControl, equalizerControl]
+  );
+
+  const handleEqualizerSelect = useCallback(
+    (id: string | null) => {
+      equalizerControl.selectEqualizer(id);
+      if (id === null) return;
+
+      segmentOps.setSelectedSegmentId(null);
+      zoomControl.clearZoomSelection();
+      drawingControl.clearDrawingSelection();
+      musicControl.clearMusicSelection();
+    },
+    [equalizerControl, segmentOps, zoomControl, drawingControl, musicControl]
   );
 
   const getSegmentIndex = useCallback(
@@ -494,10 +603,12 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     selectedSegmentId: segmentOps.selectedSegmentId,
     selectedZoomId: zoomControl.selectedZoomId,
     selectedDrawingId: drawingControl.selectedDrawingId,
+    selectedEqualizerId: equalizerControl.selectedEqualizerId,
     segmentsLength: segments.length,
     onDeleteSegment: segmentOps.handleDeleteSegment,
     onDeleteZoom: zoomControl.handleDeleteZoom,
     onDeleteDrawing: drawingControl.handleDeleteSelectedDrawings,
+    onDeleteEqualizer: equalizerControl.handleDeleteEqualizer,
     onDeleteVideo: handleDeleteVideo,
     onTogglePlayPause: playback.togglePlayPause,
     onToggleCutTool: segmentOps.toggleCutTool,
@@ -630,13 +741,32 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     );
 
     const mergedMusicTracks = mergeBuiltIns(loadedState.musicTracks ?? []);
+    const restoredSegments =
+      validSegments.length > 0 ? validSegments : defaultSegments;
+    const restoredTimelineDuration =
+      calculateTotalTimelineDuration(restoredSegments) +
+      (loadedState.firstFrame?.enabled && loadedState.firstFrame.imageData
+        ? 1 / previewFrameRate
+        : 0);
+    const restoredEqualizerSegments = loadedState.equalizerSegments
+      ? loadedState.equalizerSegments.map(segment => ({
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          ...segment,
+          enabled: true,
+        }))
+      : migrateLegacyEqualizer(
+          loadedState.equalizer,
+          restoredTimelineDuration,
+          crypto.randomUUID()
+        );
 
     history.initializeDocument({
-      segments: validSegments.length > 0 ? validSegments : defaultSegments,
+      segments: restoredSegments,
       zoomSegments: loadedState.zoomSegments,
       zoomSettings: loadedState.zoomSettings,
       drawingSegments: loadedState.drawingSegments ?? [],
       musicTracks: mergedMusicTracks.length > 0 ? mergedMusicTracks : undefined,
+      equalizerSegments: restoredEqualizerSegments,
       wallpaper: loadedState.wallpaper
         ? loadedState.wallpaper
         : recordingType === 'ios-device'
@@ -671,6 +801,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     editorData.systemAudioPath,
     editorData.micAudioPath,
     editorData.hasEmbeddedAudio,
+    previewFrameRate,
   ]);
 
   const handleLoadedMetadata = useCallback(() => {}, []);
@@ -786,6 +917,13 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
               subtitleStyle={editorData.subtitleStyle}
               wallpaper={wallpaper}
               firstFrame={firstFrameControl.firstFrame}
+              equalizerSegments={equalizerControl.equalizerSegments}
+              activeEqualizer={activeEqualizer}
+              selectedEqualizerId={equalizerControl.selectedEqualizerId}
+              equalizerTracks={equalizerAnalysis.trackData}
+              onEqualizerSelect={handleEqualizerSelect}
+              onEqualizerChange={handleEqualizerChangeLive}
+              onEqualizerCommit={equalizerControl.handleCommitEqualizerGesture}
               scrubAudioEnabled={isScrubAudioEnabled}
               onLoadedMetadata={handleLoadedMetadata}
               onTimeUpdate={playback.handleTimeUpdate}
@@ -804,12 +942,14 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
             zoomControl={zoomControl}
             drawingControl={drawingControl}
             musicControl={musicControl}
+            equalizerControl={equalizerControl}
             displayTimelineDuration={displayTimelineDuration}
             timelineRef={timelineRef}
             onSegmentSelect={handleSegmentSelect}
             onZoomSelect={handleZoomSelect}
             onDrawingSelect={handleDrawingSelect}
             onMusicSelect={handleMusicSelect}
+            onEqualizerSelect={handleEqualizerSelect}
             onPreviewSeek={handlePreviewSeek}
             onFitToView={handleFitToView}
             scrubAudioEnabled={isScrubAudioEnabled}
@@ -854,6 +994,12 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
           hasMicAudio={!!editorData.micAudioPath}
           hasKeyboardData={editorData.keyboardData !== null}
           musicTracks={musicControl.musicTracks}
+          equalizer={equalizerControl.selectedEqualizer}
+          equalizerEnabled={equalizerControl.equalizerSegments.length > 0}
+          isEqualizerLoading={equalizerAnalysis.isLoading}
+          hasEqualizerError={equalizerAnalysis.hasError}
+          onEqualizerEnabledChange={equalizerControl.handleSetEnabled}
+          onEqualizerChange={handleEqualizerChange}
           onAddMusicTrack={musicControl.handleAddMusicTrack}
           onRemoveMusicTrack={musicControl.handleRemoveMusicTrack}
           onUpdateMusicTrack={musicControl.handleUpdateMusicTrack}

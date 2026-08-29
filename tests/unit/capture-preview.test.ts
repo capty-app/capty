@@ -27,6 +27,8 @@ const mockGetHistoryItemByPath = vi.fn();
 const mockOpenScreenshotEditor = vi.fn();
 const mockCreateVideoEditorWindow = vi.fn();
 const mockDeleteVideo = vi.fn();
+const mockRegisterPreviewExportIpc = vi.fn();
+const mockDeleteMediaPathsForSender = vi.fn();
 const mockClipboardWriteImage = vi.fn();
 const mockReadFileSync = vi.fn(() => Buffer.from('image'));
 const mockNativeImageCreateFromBuffer = vi.fn(() => ({ image: true }));
@@ -185,7 +187,13 @@ vi.mock('@/main/daemon', () => ({
 }));
 
 vi.mock('@/main/capture/capture-preview/video-export', () => ({
-  registerPreviewExportIpc: vi.fn(),
+  registerPreviewExportIpc: (...args: unknown[]) =>
+    mockRegisterPreviewExportIpc(...args),
+}));
+
+vi.mock('@/main/capture/video/media-sources', () => ({
+  deleteMediaPathsForSender: (...args: unknown[]) =>
+    mockDeleteMediaPathsForSender(...args),
 }));
 
 vi.mock('@/main/utils/window-animation', () => ({
@@ -265,6 +273,20 @@ describe('capture-preview index', () => {
       registerCapturePreviewIpc();
     });
 
+    it('authorizes export data only for the matching video preview', async () => {
+      const { showCapturePreview } =
+        await import('@/main/capture/capture-preview');
+      await showCapturePreview('/p/video.capty', 'video');
+      await showCapturePreview('/p/image.png', 'screenshot');
+      const getPreviewVideoPath = mockRegisterPreviewExportIpc.mock.calls[0][0];
+
+      expect(getPreviewVideoPath(browserWindows[0].webContents.id)).toBe(
+        '/p/video.capty'
+      );
+      expect(getPreviewVideoPath(browserWindows[1].webContents.id)).toBeNull();
+      expect(getPreviewVideoPath(999)).toBeNull();
+    });
+
     it('close closes the matching preview window', async () => {
       const { showCapturePreview } =
         await import('@/main/capture/capture-preview');
@@ -272,6 +294,7 @@ describe('capture-preview index', () => {
       const id = browserWindows[0].webContents.id;
       ipcOn['capture-preview:close']({ sender: { id } });
       expect(browserWindows[0].close).toHaveBeenCalled();
+      expect(mockDeleteMediaPathsForSender).toHaveBeenCalledWith(id);
     });
 
     it('copy writes image to clipboard for screenshots', async () => {

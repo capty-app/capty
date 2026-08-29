@@ -12,6 +12,7 @@ const mockIpcHandle = vi.fn((event: string, h: Handler) => {
 });
 
 const mockGetWindowData = vi.fn();
+const mockGetMediaPathForSender = vi.fn();
 const mockShowMessageBox = vi.fn();
 const mockGetHistoryPopover = vi.fn();
 const mockUpdateHistoryItemPath = vi.fn();
@@ -25,6 +26,8 @@ const mockStatSync = vi.fn();
 const mockUnlink = vi.fn();
 const mockWriteFile = vi.fn();
 const mockRename = vi.fn();
+const mockStat = vi.fn();
+const mockOpen = vi.fn();
 const mockProbeVideo = vi.fn();
 
 vi.mock('electron', () => ({
@@ -48,6 +51,8 @@ vi.mock('fs', () => ({
       unlink: (...a: unknown[]) => mockUnlink(...a),
       writeFile: (...a: unknown[]) => mockWriteFile(...a),
       rename: (...a: unknown[]) => mockRename(...a),
+      stat: (...a: unknown[]) => mockStat(...a),
+      open: (...a: unknown[]) => mockOpen(...a),
     },
   },
   existsSync: (...a: unknown[]) => mockExistsSync(...a),
@@ -56,6 +61,8 @@ vi.mock('fs', () => ({
     unlink: (...a: unknown[]) => mockUnlink(...a),
     writeFile: (...a: unknown[]) => mockWriteFile(...a),
     rename: (...a: unknown[]) => mockRename(...a),
+    stat: (...a: unknown[]) => mockStat(...a),
+    open: (...a: unknown[]) => mockOpen(...a),
   },
 }));
 
@@ -64,10 +71,15 @@ vi.mock('@/main/capture/video/window-manager', () => ({
   updateWindowFilePath: (...a: unknown[]) => mockUpdateWindowFilePath(...a),
 }));
 
+vi.mock('@/main/capture/video/media-sources', () => ({
+  getMediaPathForSender: (...a: unknown[]) => mockGetMediaPathForSender(...a),
+}));
+
 vi.mock('@/main/capture/video/recording-project', () => ({
   renameRecordingProject: (...a: unknown[]) => mockRenameRecordingProject(...a),
   getProjectFolder: (p: string) =>
     p.endsWith('.capty') || p.includes('.capty/') ? '/Rec.capty' : null,
+  getCameraVideoPath: (p: string) => p.replace(/\.[^.]+$/, '.camera.mov'),
 }));
 
 vi.mock('@/main/capture/video/delete-video', () => ({
@@ -255,6 +267,7 @@ describe('file handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    mockGetMediaPathForSender.mockReset();
     Object.keys(ipcHandleHandlers).forEach(k => delete ipcHandleHandlers[k]);
   });
 
@@ -297,6 +310,117 @@ describe('file handlers', () => {
     )) as { success: boolean; error?: string };
     expect(result.success).toBe(false);
     expect(result.error).toBe('locked');
+  });
+
+  it('returns the registered editor video size', async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    mockGetMediaPathForSender.mockReturnValue('/p/my #video.mp4');
+    mockOpen.mockResolvedValue({
+      stat: vi.fn().mockResolvedValue({ isFile: () => true, size: 4096 }),
+      close,
+    });
+    const { registerFileHandlers } =
+      await import('@/main/capture/video/ipc/file-handlers');
+    registerFileHandlers();
+
+    const result = await ipcHandleHandlers['video-editor:media:get-size'](
+      { sender: { id: 1 } },
+      { source: 'video' }
+    );
+
+    expect(result).toEqual({ success: true, size: 4096 });
+    expect(mockOpen).toHaveBeenCalledWith('/p/my #video.mp4', 'r');
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('reads only the requested bytes from the registered video', async () => {
+    mockGetMediaPathForSender.mockReturnValue('/p/video.mp4');
+    const read = vi.fn(
+      async (bytes: Uint8Array, offset: number, length: number) => {
+        bytes.set([4, 5, 6], offset);
+        return { bytesRead: length };
+      }
+    );
+    const close = vi.fn().mockResolvedValue(undefined);
+    mockOpen.mockResolvedValue({
+      stat: vi.fn().mockResolvedValue({ isFile: () => true, size: 10 }),
+      read,
+      close,
+    });
+    const { registerFileHandlers } =
+      await import('@/main/capture/video/ipc/file-handlers');
+    registerFileHandlers();
+
+    const result = (await ipcHandleHandlers['video-editor:media:read-range'](
+      { sender: { id: 1 } },
+      { source: 'video', start: 2, end: 5 }
+    )) as { success: boolean; bytes: Uint8Array };
+
+    expect(result.success).toBe(true);
+    expect(result.bytes).toEqual(new Uint8Array([4, 5, 6]));
+    expect(read).toHaveBeenCalledWith(expect.any(Uint8Array), 0, 3, 2);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('rejects unsafe media ranges before opening a file', async () => {
+    const { registerFileHandlers } =
+      await import('@/main/capture/video/ipc/file-handlers');
+    registerFileHandlers();
+
+    const result = await ipcHandleHandlers['video-editor:media:read-range'](
+      { sender: { id: 1 } },
+      {
+        source: 'video',
+        start: -1,
+        end: 5,
+      }
+    );
+
+    expect(result).toEqual({ success: false, error: 'Invalid file range' });
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it('rejects unavailable camera media sources', async () => {
+    mockGetMediaPathForSender.mockReturnValue(null);
+    const { registerFileHandlers } =
+      await import('@/main/capture/video/ipc/file-handlers');
+    registerFileHandlers();
+
+    const result = await ipcHandleHandlers['video-editor:media:get-size'](
+      { sender: { id: 1 } },
+      { source: 'camera' }
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Media source is unavailable',
+    });
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it('rejects media reads from unregistered senders and unknown sources', async () => {
+    mockGetMediaPathForSender.mockReturnValue(null);
+    const { registerFileHandlers } =
+      await import('@/main/capture/video/ipc/file-handlers');
+    registerFileHandlers();
+
+    const unregistered = await ipcHandleHandlers['video-editor:media:get-size'](
+      { sender: { id: 9 } },
+      { source: 'video' }
+    );
+    const unknownSource = await ipcHandleHandlers[
+      'video-editor:media:get-size'
+    ]({ sender: { id: 1 } }, { source: '/private/file' });
+
+    expect(unregistered).toEqual({
+      success: false,
+      error: 'Media source is unavailable',
+    });
+    expect(unknownSource).toEqual({
+      success: false,
+      error: 'Media source is unavailable',
+    });
+    expect(mockOpen).not.toHaveBeenCalled();
   });
 
   it('file:write-buffer writes buffer', async () => {

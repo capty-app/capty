@@ -2,12 +2,19 @@ import { BrowserWindow, screen, app, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { isDev, devServerUrl } from '@/main/utils/env';
-import { isRecordingProject, getRecordingVideoPath } from './recording-project';
+import { getRecordingVideoPath, isRecordingProject } from './recording-project';
+import {
+  deleteMediaPathsForSender,
+  resolveVideoMediaPaths,
+  setMediaPathsForSender,
+  type VideoMediaPaths,
+} from './media-sources';
 import { registerDockWindow } from '@/main/utils/dock';
 
 export interface VideoEditorWindowData {
   window: BrowserWindow;
   filePath: string;
+  mediaPaths: VideoMediaPaths;
   isClosingConfirmed: boolean;
   isExporting: boolean;
 }
@@ -25,10 +32,12 @@ export function setWindowData(
   data: VideoEditorWindowData
 ): void {
   videoEditorWindows.set(webContentsId, data);
+  setMediaPathsForSender(webContentsId, data.mediaPaths);
 }
 
 export function deleteWindowData(webContentsId: number): void {
   videoEditorWindows.delete(webContentsId);
+  deleteMediaPathsForSender(webContentsId);
 }
 
 export function updateWindowFilePath(
@@ -36,8 +45,18 @@ export function updateWindowFilePath(
   newFilePath: string
 ): void {
   const data = videoEditorWindows.get(webContentsId);
-  if (data) {
+  if (!data) return;
+
+  try {
+    const mediaPaths = resolveVideoMediaPaths(newFilePath);
     data.filePath = newFilePath;
+    data.mediaPaths = mediaPaths;
+    setMediaPathsForSender(webContentsId, mediaPaths);
+  } catch {
+    console.error(
+      'Updated video media paths could not be resolved:',
+      newFilePath
+    );
   }
 }
 
@@ -61,6 +80,14 @@ export function createVideoEditorWindow(
 
   if (!fs.existsSync(videoPath)) {
     console.error('Video file not found:', videoPath);
+    return;
+  }
+
+  let mediaPaths: VideoMediaPaths;
+  try {
+    mediaPaths = resolveVideoMediaPaths(videoPath);
+  } catch {
+    console.error('Video media paths could not be resolved:', videoPath);
     return;
   }
 
@@ -98,9 +125,10 @@ export function createVideoEditorWindow(
 
   const webContentsId = newWindow.webContents.id;
 
-  videoEditorWindows.set(webContentsId, {
+  setWindowData(webContentsId, {
     window: newWindow,
     filePath: videoPath,
+    mediaPaths,
     isClosingConfirmed: false,
     isExporting: false,
   });
@@ -139,7 +167,7 @@ export function createVideoEditorWindow(
   });
 
   newWindow.on('closed', () => {
-    videoEditorWindows.delete(webContentsId);
+    deleteWindowData(webContentsId);
   });
 
   return newWindow;

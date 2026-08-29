@@ -53,6 +53,7 @@ export type VideoFrameRate =
   '60' | '50' | '40' | '30' | '25' | '24' | '20' | '10';
 
 export type VideoFormat = 'mp4' | 'gif';
+export type VideoEditorMediaSource = 'video' | 'camera';
 
 export type VideoExportPreset = 'custom' | 'social';
 

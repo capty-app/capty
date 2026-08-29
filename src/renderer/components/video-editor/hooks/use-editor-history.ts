@@ -19,6 +19,7 @@ import { DEFAULT_SUBTITLE_STYLE } from '@/types/subtitle';
 import type { AudioStyle } from '@/types/audio';
 import { DEFAULT_AUDIO_STYLE } from '@/types/audio';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EqualizerSegment } from '@/types/equalizer';
 
 export interface EditorDocument {
   segments: Segment[];
@@ -33,6 +34,7 @@ export interface EditorDocument {
   keyboardStyle: KeyboardStyle;
   subtitleStyle: SubtitleStyle;
   audioStyle: AudioStyle;
+  equalizerSegments: EqualizerSegment[];
 }
 
 const INITIAL_DOCUMENT: EditorDocument = {
@@ -48,6 +50,7 @@ const INITIAL_DOCUMENT: EditorDocument = {
   keyboardStyle: DEFAULT_KEYBOARD_STYLE,
   subtitleStyle: DEFAULT_SUBTITLE_STYLE,
   audioStyle: DEFAULT_AUDIO_STYLE,
+  equalizerSegments: [],
 };
 
 const OBJECT_KEYS_WITH_DEFAULTS: ReadonlyArray<keyof EditorDocument> = [
@@ -126,6 +129,7 @@ export interface UseEditorHistoryReturn {
   keyboardStyle: SliceController<KeyboardStyle>;
   subtitleStyle: SliceController<SubtitleStyle>;
   audioStyle: SliceController<AudioStyle>;
+  equalizerSegments: SliceController<EqualizerSegment[]>;
 }
 
 function resolveUpdater<T>(updater: Updater<T>, prev: T): T {
@@ -200,6 +204,7 @@ export function useEditorHistory(): UseEditorHistoryReturn {
       keyboardStyle: build('keyboardStyle'),
       subtitleStyle: build('subtitleStyle'),
       audioStyle: build('audioStyle'),
+      equalizerSegments: build('equalizerSegments'),
     };
   }, [set, setWithoutHistory, commitToHistory]);
 
@@ -239,5 +244,9 @@ export function useEditorHistory(): UseEditorHistoryReturn {
       ...sliceSetters.subtitleStyle,
     },
     audioStyle: { value: document.audioStyle, ...sliceSetters.audioStyle },
+    equalizerSegments: {
+      value: document.equalizerSegments,
+      ...sliceSetters.equalizerSegments,
+    },
   };
 }

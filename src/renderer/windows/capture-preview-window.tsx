@@ -33,7 +33,7 @@ export default function CapturePreviewWindow({
   const displayMenuRef = useRef<HTMLDivElement>(null);
 
   const { isCopying, isDone, copyProgress, startExport, cancelExport } =
-    useVideoClipboardExport(filePath);
+    useVideoClipboardExport();
 
   const {
     uploadState,

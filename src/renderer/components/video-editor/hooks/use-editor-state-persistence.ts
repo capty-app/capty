@@ -14,6 +14,7 @@ import type { VideoWallpaperSettings } from '@/types/video-wallpaper';
 import type { FirstFrameSettings } from '@/types/first-frame';
 import type { MusicTrack } from '@/types/music';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EqualizerSegment } from '@/types/equalizer';
 import type { Segment } from '../types';
 import type { SidebarTab } from '../editor-sidebar';
 
@@ -32,6 +33,7 @@ interface EditorStateValues {
   wallpaper: VideoWallpaperSettings;
   firstFrame: FirstFrameSettings;
   musicTracks: MusicTrack[];
+  equalizerSegments: EqualizerSegment[];
   exportSettings: ExportSettings;
   timelineZoom: number;
   sidebarOpen: boolean;
@@ -120,6 +122,7 @@ export function useEditorStatePersistence({
       wallpaper: values.wallpaper,
       firstFrame: values.firstFrame,
       musicTracks: values.musicTracks,
+      equalizerSegments: values.equalizerSegments,
       exportSettings: values.exportSettings,
       timelineZoom: values.timelineZoom,
       ui: {

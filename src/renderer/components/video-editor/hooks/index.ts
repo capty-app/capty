@@ -19,4 +19,6 @@ export { useSidebarShortcuts } from './use-sidebar-shortcuts';
 export { useFirstFrame } from './use-first-frame';
 export { useMusicTracks, buildBuiltInMusicTracks } from './use-music-tracks';
 export { useMusicPlayback } from './use-music-playback';
+export { useEqualizerAnalysis } from './use-equalizer-analysis';
+export { useEqualizerSegments } from './use-equalizer-segments';
 export { useResizableHeight } from './use-resizable-height';

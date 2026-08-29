@@ -17,6 +17,11 @@ import type { VideoWallpaperSettings } from '@/types/video-wallpaper';
 import type { FirstFrameSettings } from '@/types/first-frame';
 import type { Annotation } from '@/types/editor';
 import type {
+  EqualizerSegment,
+  EqualizerSettings,
+  EqualizerTrackData,
+} from '@/types/equalizer';
+import type {
   DrawingSegment,
   DrawingToolSettings,
   VideoDrawingTool,
@@ -31,6 +36,7 @@ import {
 } from './utils';
 import { VideoCompositionEngine } from './composition';
 import VideoDrawingOverlay from './video-drawing-overlay';
+import VideoEqualizerOverlay from './video-equalizer-overlay';
 
 interface NativeVideoPlayerProps {
   videoSrc: string;
@@ -59,6 +65,13 @@ interface NativeVideoPlayerProps {
   subtitleStyle?: SubtitleStyle | null;
   wallpaper?: VideoWallpaperSettings | null;
   firstFrame?: FirstFrameSettings | null;
+  equalizerSegments?: EqualizerSegment[] | null;
+  activeEqualizer?: EqualizerSegment | null;
+  selectedEqualizerId?: string | null;
+  equalizerTracks?: EqualizerTrackData[] | null;
+  onEqualizerSelect?: (id: string) => void;
+  onEqualizerChange?: (settings: EqualizerSettings) => void;
+  onEqualizerCommit?: () => void;
   drawingSegments?: DrawingSegment[] | null;
   drawingToolSettings?: DrawingToolSettings | null;
   drawingTimelinePosition?: number;
@@ -118,6 +131,13 @@ const NativeVideoPlayer = forwardRef<
       subtitleStyle = null,
       wallpaper = null,
       firstFrame = null,
+      equalizerSegments = null,
+      activeEqualizer = null,
+      selectedEqualizerId = null,
+      equalizerTracks = null,
+      onEqualizerSelect,
+      onEqualizerChange,
+      onEqualizerCommit,
       drawingSegments = null,
       drawingToolSettings = null,
       drawingTimelinePosition,
@@ -148,6 +168,12 @@ const NativeVideoPlayer = forwardRef<
     const backgroundImageRef = useRef<HTMLImageElement | null>(null);
     const firstFrameImageRef = useRef<HTMLImageElement | null>(null);
     const drawingSegmentsRef = useRef<DrawingSegment[] | null>(null);
+    const equalizerSegmentsRef = useRef<EqualizerSegment[] | null>(
+      equalizerSegments
+    );
+    const equalizerTracksRef = useRef<EqualizerTrackData[] | null>(
+      equalizerTracks
+    );
     const isDrawingSelectModeRef = useRef(false);
     const lastCameraFrameRef = useRef<HTMLCanvasElement | null>(null);
     const lastVideoFrameRef = useRef<HTMLCanvasElement | null>(null);
@@ -159,6 +185,8 @@ const NativeVideoPlayer = forwardRef<
     const micSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
     const [timelinePosition, setTimelinePosition] = useState(0);
+    const [isEqualizerOverlaySelected, setIsEqualizerOverlaySelected] =
+      useState(selectedEqualizerId !== null);
     const timelinePositionRef = useRef(0);
     const previewTimelinePositionRef = useRef<number | null>(null);
     const lastPreviewVideoTimeRef = useRef<number | null>(null);
@@ -270,6 +298,8 @@ const NativeVideoPlayer = forwardRef<
         subtitleData,
         subtitleStyle,
         firstFrame,
+        equalizerSegments: equalizerSegmentsRef.current,
+        equalizerTracks: equalizerTracksRef.current,
         fps,
       });
 
@@ -310,6 +340,16 @@ const NativeVideoPlayer = forwardRef<
         redactOnlyDrawings: isDrawingSelectMode,
       });
     }, [drawingSegments, isDrawingSelectMode]);
+
+    useEffect(() => {
+      equalizerSegmentsRef.current = equalizerSegments;
+      equalizerTracksRef.current = equalizerTracks;
+      engineRef.current?.updateConfig({ equalizerSegments, equalizerTracks });
+    }, [equalizerSegments, equalizerTracks]);
+
+    useEffect(() => {
+      setIsEqualizerOverlaySelected(selectedEqualizerId !== null);
+    }, [selectedEqualizerId]);
 
     useEffect(() => {
       if (!wallpaper?.backgroundImage) {
@@ -1349,6 +1389,28 @@ const NativeVideoPlayer = forwardRef<
               onAnnotationAdded={onAnnotationAdded}
             />
           )}
+
+          {activeEqualizer?.enabled &&
+          onEqualizerSelect &&
+          onEqualizerChange &&
+          onEqualizerCommit ? (
+            <VideoEqualizerOverlay
+              settings={activeEqualizer}
+              compositionWidth={compositionWidth}
+              compositionHeight={compositionHeight}
+              isSelected={
+                isEqualizerOverlaySelected &&
+                selectedEqualizerId === activeEqualizer.id
+              }
+              onSelect={() => {
+                setIsEqualizerOverlaySelected(true);
+                onEqualizerSelect(activeEqualizer.id);
+              }}
+              onDeselect={() => setIsEqualizerOverlaySelected(false)}
+              onChange={onEqualizerChange}
+              onCommit={onEqualizerCommit}
+            />
+          ) : null}
 
           <video
             ref={videoRef}
