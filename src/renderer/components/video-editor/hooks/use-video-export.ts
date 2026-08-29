@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import type { VideoExportOptions, VideoMetadata } from '@/types/video';
+import type {
+  VideoExportOptions,
+  VideoFrameRate,
+  VideoMetadata,
+} from '@/types/video';
+import { parseVideoFrameRate } from '@/types/video';
 import type { ExportSettings } from '@/types/video-editor-state';
 import type { CloudUploadState } from '@/types/cloud';
 import type { Segment } from '../types';
@@ -124,7 +129,8 @@ export function useVideoExport(): UseVideoExportReturn {
           ? rawOutputPath
           : `${rawOutputPath.replace(/\.[^/.]+$/, '')}.gif`
         : rawOutputPath;
-      const frameRate = parseInt(options.frameRate, 10);
+      const frameRate = parseVideoFrameRate(options.frameRate);
+      const normalizedFrameRate = String(frameRate) as VideoFrameRate;
 
       setIsExporting(true);
       setExportProgress(0);
@@ -231,7 +237,7 @@ export function useVideoExport(): UseVideoExportReturn {
           frameRate,
           qualityPreset: options.qualityPreset,
           resolution: options.resolution,
-          exportOptions: options,
+          exportOptions: { ...options, frameRate: normalizedFrameRate },
           onProgress: progress => {
             const adjustedProgress = isGif
               ? Math.round(progress * 0.7)
@@ -264,7 +270,7 @@ export function useVideoExport(): UseVideoExportReturn {
               inputPath: mp4OutputPath,
               outputPath: finalOutputPath,
               resolution: options.resolution,
-              frameRate: options.frameRate,
+              frameRate: normalizedFrameRate,
             }
           )) as { success: boolean; error?: string };
 

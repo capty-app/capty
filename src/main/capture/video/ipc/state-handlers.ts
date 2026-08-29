@@ -8,6 +8,7 @@ import {
   isValidEqualizerSegments,
   isValidEqualizerSettings,
 } from '@/types/equalizer';
+import { parseVideoFrameRate } from '@/types/video';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
@@ -237,10 +238,8 @@ function isValidEditorState(state: unknown): state is VideoEditorState {
     s.firstFrame.imageData.length > 0
   ) {
     const exportSettings = isRecord(s.exportSettings) ? s.exportSettings : null;
-    const frameRate = Number(exportSettings?.frameRate ?? 60);
-    if (Number.isFinite(frameRate) && frameRate > 0) {
-      timelineDuration += 1 / frameRate;
-    }
+    const frameRate = parseVideoFrameRate(exportSettings?.frameRate);
+    timelineDuration += 1 / frameRate;
   }
 
   if (

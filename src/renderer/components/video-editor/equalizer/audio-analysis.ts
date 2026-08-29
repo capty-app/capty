@@ -5,6 +5,8 @@ import type {
   EqualizerTrackData,
 } from '@/types/equalizer';
 import type { MusicTrack } from '@/types/music';
+import { CORRELATED_IPC_CHANNELS } from '@/types/ipc';
+import { sendCorrelatedIpcRequest } from '@/renderer/utils/ipc-request';
 
 interface LoadEqualizerTracksOptions {
   tracks: MusicTrack[];
@@ -47,10 +49,11 @@ function getSource(track: MusicTrack): EqualizerAudioSource | null {
 
 function getCacheKey(
   sourceVideoPath: string,
+  trackId: string,
   source: EqualizerAudioSource
 ): string {
   return source.type === 'music'
-    ? `${sourceVideoPath}:music:${source.fileName}`
+    ? `${sourceVideoPath}:music:${trackId}:${source.fileName}`
     : `${sourceVideoPath}:${source.type}`;
 }
 
@@ -101,10 +104,16 @@ async function analyzeAudioSource(
   signal?.addEventListener('abort', handleAbort, { once: true });
 
   try {
-    const result = (await window.ipcRenderer.invoke(
-      'video-editor:equalizer:analyze',
-      { requestId, source }
-    )) as EqualizerAnalysisResult;
+    const result = await sendCorrelatedIpcRequest<
+      { source: EqualizerAudioSource },
+      EqualizerAnalysisResult
+    >({
+      requestChannel: CORRELATED_IPC_CHANNELS.equalizerAnalyze.request,
+      responseChannel: CORRELATED_IPC_CHANNELS.equalizerAnalyze.response,
+      payload: { source },
+      requestId,
+      signal,
+    });
 
     if (signal?.aborted) throw createAbortError();
     if (!result.success || !result.analysis) {
@@ -159,7 +168,7 @@ async function loadTrack(
   if (!source) return null;
 
   const analysis = await getAudioAnalysis(
-    getCacheKey(options.sourceVideoPath, source),
+    getCacheKey(options.sourceVideoPath, track.id, source),
     source,
     signal
   );

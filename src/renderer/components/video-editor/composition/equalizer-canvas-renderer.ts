@@ -62,8 +62,15 @@ function renderBackdrop(
 }
 
 function layoutBars(width: number, count: number): BarLayout {
-  const gap = Math.max(2, width * 0.006);
-  const barWidth = Math.max(1, (width - gap * (count - 1)) / count);
+  if (width <= 0 || count <= 0) return { gap: 0, barWidth: 0, step: 0 };
+
+  const minimumBarWidth = Math.min(1, width / count);
+  const maximumGap =
+    count > 1
+      ? Math.max(0, (width - minimumBarWidth * count) / (count - 1))
+      : 0;
+  const gap = Math.min(Math.max(2, width * 0.006), maximumGap);
+  const barWidth = (width - gap * (count - 1)) / count;
   return { gap, barWidth, step: barWidth + gap };
 }
 

@@ -49,6 +49,7 @@ import type {
 } from '@/renderer/components/video-editor';
 import {
   PROJECT_EXTENSION,
+  parseVideoFrameRate,
   type VideoExportOptions,
   type ProjectRenameResult,
 } from '@/types/video';
@@ -171,10 +172,10 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     return () => window.removeEventListener('focus', refreshCloudConfigured);
   }, []);
 
-  const previewFrameRate = useMemo(() => {
-    const parsed = parseInt(videoExport.exportSettings.frameRate, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-  }, [videoExport.exportSettings.frameRate]);
+  const previewFrameRate = useMemo(
+    () => parseVideoFrameRate(videoExport.exportSettings.frameRate),
+    [videoExport.exportSettings.frameRate]
+  );
 
   const activeFirstFrameDuration =
     firstFrameControl.firstFrame.enabled &&

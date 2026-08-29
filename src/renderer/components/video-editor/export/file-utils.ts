@@ -1,5 +1,7 @@
 import { CustomSource } from 'mediabunny';
 import type { VideoEditorMediaSource } from '@/types/video';
+import { CORRELATED_IPC_CHANNELS } from '@/types/ipc';
+import { sendCorrelatedIpcRequest } from '@/renderer/utils/ipc-request';
 
 interface FileSizeResult {
   success: boolean;
@@ -16,10 +18,14 @@ interface FileRangeResult {
 export function createFileSource(source: VideoEditorMediaSource): CustomSource {
   return new CustomSource({
     getSize: async () => {
-      const result = (await window.ipcRenderer.invoke(
-        'video-editor:media:get-size',
-        { source }
-      )) as FileSizeResult;
+      const result = await sendCorrelatedIpcRequest<
+        { source: VideoEditorMediaSource },
+        FileSizeResult
+      >({
+        requestChannel: CORRELATED_IPC_CHANNELS.mediaGetSize.request,
+        responseChannel: CORRELATED_IPC_CHANNELS.mediaGetSize.response,
+        payload: { source },
+      });
 
       if (!result.success || result.size === undefined) {
         throw new Error(result.error ?? 'Failed to read media file size');
@@ -28,14 +34,14 @@ export function createFileSource(source: VideoEditorMediaSource): CustomSource {
       return result.size;
     },
     read: async (start, end) => {
-      const result = (await window.ipcRenderer.invoke(
-        'video-editor:media:read-range',
-        {
-          source,
-          start,
-          end,
-        }
-      )) as FileRangeResult;
+      const result = await sendCorrelatedIpcRequest<
+        { source: VideoEditorMediaSource; start: number; end: number },
+        FileRangeResult
+      >({
+        requestChannel: CORRELATED_IPC_CHANNELS.mediaReadRange.request,
+        responseChannel: CORRELATED_IPC_CHANNELS.mediaReadRange.response,
+        payload: { source, start, end },
+      });
 
       if (!result.success || !result.bytes) {
         throw new Error(result.error ?? 'Failed to read media file');

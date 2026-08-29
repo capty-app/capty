@@ -97,6 +97,10 @@ describe('capture preview video export', () => {
     mockResolveVideoMediaPaths.mockReturnValue({
       video: '/project/video.cap/content.mp4',
       camera: null,
+      identities: {
+        video: { device: 1, inode: 2 },
+        camera: null,
+      },
     });
   });
 
@@ -170,6 +174,10 @@ describe('capture preview video export', () => {
     expect(mockSetMediaPathsForSender).toHaveBeenCalledWith(7, {
       video: '/project/video.cap/content.mp4',
       camera: null,
+      identities: {
+        video: { device: 1, inode: 2 },
+        camera: null,
+      },
     });
   });
 

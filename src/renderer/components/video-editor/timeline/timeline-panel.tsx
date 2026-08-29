@@ -166,8 +166,14 @@ export default function TimelinePanel({
           onResize={equalizerControl.handleUpdateEqualizerTime}
           onMove={equalizerControl.handleUpdateEqualizerTime}
           onGestureEnd={equalizerControl.handleCommitEqualizerGesture}
-          onAdd={equalizerControl.handleAddEqualizer}
-          onDuplicate={equalizerControl.handleDuplicateEqualizer}
+          onAdd={(startTime, endTime) => {
+            const id = equalizerControl.handleAddEqualizer(startTime, endTime);
+            if (id) onEqualizerSelect(id);
+          }}
+          onDuplicate={sourceId => {
+            const id = equalizerControl.handleDuplicateEqualizer(sourceId);
+            if (id) onEqualizerSelect(id);
+          }}
           onDelete={equalizerControl.handleDeleteEqualizer}
         />
       ),

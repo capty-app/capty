@@ -1,10 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockInvoke = vi.fn();
+const mockSend = vi.fn();
+const mockOn = vi.fn();
+const mockOff = vi.fn();
+const responseListeners = new Map<
+  string,
+  (event: unknown, response: unknown) => void
+>();
 
 vi.stubGlobal('window', {
   ipcRenderer: {
     invoke: mockInvoke,
+    send: mockSend,
+    on: mockOn,
+    off: mockOff,
   },
 });
 
@@ -12,21 +22,47 @@ describe('file-utils', () => {
   beforeEach(() => {
     vi.resetModules();
     mockInvoke.mockReset();
+    mockSend.mockReset();
+    mockOn.mockReset();
+    mockOff.mockReset();
+    responseListeners.clear();
+    mockOn.mockImplementation(
+      (
+        channel: string,
+        listener: (event: unknown, response: unknown) => void
+      ) => {
+        responseListeners.set(channel, listener);
+      }
+    );
+    mockOff.mockImplementation((channel: string) => {
+      responseListeners.delete(channel);
+    });
   });
 
   describe('createFileSource', () => {
     it('reads media through IPC without file URL fetches', async () => {
-      mockInvoke.mockImplementation(
-        (channel: string, payload: { start?: number; end?: number }) => {
-          if (channel === 'video-editor:media:get-size') {
-            return Promise.resolve({ success: true, size: 6 });
-          }
-
-          const length = (payload.end ?? 0) - (payload.start ?? 0);
-          return Promise.resolve({
-            success: true,
-            bytes: new Uint8Array(length).fill(7),
-          });
+      mockSend.mockImplementation(
+        (
+          channel: string,
+          payload: { requestId: string; start?: number; end?: number }
+        ) => {
+          const responseChannel = `${channel}:response`;
+          const result =
+            channel === 'video-editor:media:get-size'
+              ? { success: true, size: 6 }
+              : {
+                  success: true,
+                  bytes: new Uint8Array(
+                    (payload.end ?? 0) - (payload.start ?? 0)
+                  ).fill(7),
+                };
+          responseListeners.get(responseChannel)?.(
+            {},
+            {
+              requestId: payload.requestId,
+              result,
+            }
+          );
         }
       );
 
@@ -38,19 +74,29 @@ describe('file-utils', () => {
       const result = await source._read(1, 3, 0, 6);
 
       expect(result?.bytes).toEqual(new Uint8Array(6).fill(7));
-      expect(mockInvoke).toHaveBeenCalledWith('video-editor:media:get-size', {
-        source: 'video',
-      });
-      expect(mockInvoke).toHaveBeenCalledWith('video-editor:media:read-range', {
-        source: 'video',
-        start: 0,
-        end: 6,
-      });
+      expect(mockSend).toHaveBeenCalledWith(
+        'video-editor:media:get-size',
+        expect.objectContaining({ source: 'video' })
+      );
+      expect(mockSend).toHaveBeenCalledWith(
+        'video-editor:media:read-range',
+        expect.objectContaining({ source: 'video', start: 0, end: 6 })
+      );
       source._dispose();
     });
 
     it('surfaces media read failures', async () => {
-      mockInvoke.mockResolvedValue({ success: false, error: 'File missing' });
+      mockSend.mockImplementation(
+        (channel: string, payload: { requestId: string }) => {
+          responseListeners.get(`${channel}:response`)?.(
+            {},
+            {
+              requestId: payload.requestId,
+              result: { success: false, error: 'File missing' },
+            }
+          );
+        }
+      );
 
       const { createFileSource } =
         await import('@/renderer/components/video-editor/export/file-utils');

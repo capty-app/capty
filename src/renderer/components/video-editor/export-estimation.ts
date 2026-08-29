@@ -4,6 +4,7 @@ import type {
   VideoFrameRate,
   VideoQualityPreset,
 } from '@/types/video';
+import { parseVideoFrameRate } from '@/types/video';
 
 export interface ExportEstimate {
   estimatedTimeSeconds: number;
@@ -87,8 +88,7 @@ const BENCHMARK_DATA: BenchmarkEntry[] = [
 ];
 
 function getFrameRateMultiplier(frameRate: VideoFrameRate): number {
-  const fps = parseInt(frameRate, 10);
-  return fps / 30;
+  return parseVideoFrameRate(frameRate) / 30;
 }
 
 function getResolutionMultiplier(resolution: VideoResolution): {

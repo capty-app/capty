@@ -13,6 +13,10 @@ const mockLoadCameraData = vi.fn();
 const mockResolveVideoMediaPaths = vi.fn((videoPath: string) => ({
   video: videoPath,
   camera: '/p/camera.mov',
+  identities: {
+    video: { device: 1, inode: 2 },
+    camera: { device: 1, inode: 3 },
+  },
 }));
 const mockSetMediaPathsForSender = vi.fn();
 const mockDeleteMediaPathsForSender = vi.fn();

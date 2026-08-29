@@ -131,8 +131,8 @@ export function useEqualizerSegments({
   );
 
   const handleAddEqualizer = useCallback(
-    (startTime: number, endTime: number) => {
-      if (totalTimelineDuration <= 0) return;
+    (startTime: number, endTime: number): string | null => {
+      if (totalTimelineDuration <= 0) return null;
 
       const boundedStart = Math.max(
         0,
@@ -146,7 +146,7 @@ export function useEqualizerSegments({
         boundedEnd - boundedStart < 0.1 ||
         wouldOverlap(boundedStart, boundedEnd)
       ) {
-        return;
+        return null;
       }
 
       const segment: EqualizerSegment = {
@@ -156,17 +156,17 @@ export function useEqualizerSegments({
         endTime: boundedEnd,
       };
       setEqualizerSegments(previous => [...previous, segment]);
-      selectEqualizer(segment.id);
+      return segment.id;
     },
-    [selectEqualizer, setEqualizerSegments, totalTimelineDuration, wouldOverlap]
+    [setEqualizerSegments, totalTimelineDuration, wouldOverlap]
   );
 
   const handleDuplicateEqualizer = useCallback(
-    (id: string) => {
-      if (totalTimelineDuration <= 0) return;
+    (id: string): string | null => {
+      if (totalTimelineDuration <= 0) return null;
 
       const source = segmentsRef.current.find(segment => segment.id === id);
-      if (!source) return;
+      if (!source) return null;
 
       const duration = source.endTime - source.startTime;
       const placement = findFreePlacement(
@@ -175,7 +175,7 @@ export function useEqualizerSegments({
         duration,
         source.endTime
       );
-      if (!placement) return;
+      if (!placement) return null;
 
       const segment: EqualizerSegment = {
         ...source,
@@ -184,9 +184,9 @@ export function useEqualizerSegments({
         endTime: placement.endTime,
       };
       setEqualizerSegments(previous => [...previous, segment]);
-      selectEqualizer(segment.id);
+      return segment.id;
     },
-    [selectEqualizer, setEqualizerSegments, totalTimelineDuration]
+    [setEqualizerSegments, totalTimelineDuration]
   );
 
   const handleUpdateEqualizerTime = useCallback(

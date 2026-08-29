@@ -57,30 +57,34 @@ function setProjectWindowData(projectPath: string): void {
     mediaPaths: {
       video: path.join(projectPath, 'recording.mov'),
       camera: null,
+      identities: {
+        video: { device: 1, inode: 2 },
+        camera: null,
+      },
     },
   });
 }
 
-function createSender(id: number): EventEmitter & { id: number } {
-  const sender = new EventEmitter() as EventEmitter & { id: number };
+interface TestSender extends EventEmitter {
+  id: number;
+  send: ReturnType<typeof vi.fn>;
+  isDestroyed: () => boolean;
+}
+
+function createSender(id: number): TestSender {
+  const sender = new EventEmitter() as TestSender;
   sender.id = id;
+  sender.send = vi.fn();
+  sender.isDestroyed = () => false;
   return sender;
 }
 
-function getRegisteredHandler(
+function getRegisteredListener(
   channel: string
 ): (...args: unknown[]) => unknown {
-  const registration = mocks.handle.mock.calls.find(
-    call => call[0] === channel
-  );
-  if (!registration) throw new Error(`Missing handler for ${channel}`);
-  return registration[1] as (...args: unknown[]) => unknown;
-}
-
-function getRegisteredListener(channel: string): (...args: unknown[]) => void {
   const registration = mocks.on.mock.calls.find(call => call[0] === channel);
   if (!registration) throw new Error(`Missing listener for ${channel}`);
-  return registration[1] as (...args: unknown[]) => void;
+  return registration[1] as (...args: unknown[]) => unknown;
 }
 
 beforeEach(() => {
@@ -167,22 +171,29 @@ describe('equalizer analysis IPC', () => {
         })
     );
     registerEqualizerHandlers();
-    const analyze = getRegisteredHandler('video-editor:equalizer:analyze');
+    const analyze = getRegisteredListener('video-editor:equalizer:analyze');
     const cancel = getRegisteredListener('video-editor:equalizer:cancel');
 
-    const result = analyze(
+    const response = analyze(
       { sender },
       { requestId: 'request-1', source: { type: 'system' } }
-    );
+    ) as Promise<void>;
     await vi.waitFor(() =>
       expect(mocks.analyzeEqualizerAudio).toHaveBeenCalled()
     );
     cancel({ sender }, { requestId: 'request-1' });
 
-    await expect(result).resolves.toEqual({
-      success: false,
-      error: 'Audio analysis cancelled',
-    });
+    await response;
+    expect(sender.send).toHaveBeenCalledWith(
+      'video-editor:equalizer:analyze:response',
+      {
+        requestId: 'request-1',
+        result: {
+          success: false,
+          error: 'Audio analysis cancelled',
+        },
+      }
+    );
   });
 
   it('limits analysis concurrency in the main process', async () => {
@@ -197,13 +208,14 @@ describe('equalizer analysis IPC', () => {
         })
     );
     registerEqualizerHandlers();
-    const analyze = getRegisteredHandler('video-editor:equalizer:analyze');
+    const analyze = getRegisteredListener('video-editor:equalizer:analyze');
 
-    const requests = [1, 2, 3].map(index =>
-      analyze(
-        { sender },
-        { requestId: `request-${index}`, source: { type: 'system' } }
-      )
+    const requests = [1, 2, 3].map(
+      index =>
+        analyze(
+          { sender },
+          { requestId: `request-${index}`, source: { type: 'system' } }
+        ) as Promise<void>
     );
 
     await vi.waitFor(() =>
@@ -216,10 +228,20 @@ describe('equalizer analysis IPC', () => {
     resolvers[1](EMPTY_ANALYSIS);
     resolvers[2](EMPTY_ANALYSIS);
 
-    await expect(Promise.all(requests)).resolves.toEqual([
-      { success: true, analysis: EMPTY_ANALYSIS },
-      { success: true, analysis: EMPTY_ANALYSIS },
-      { success: true, analysis: EMPTY_ANALYSIS },
-    ]);
+    await Promise.all(requests);
+    expect(sender.send).toHaveBeenCalledTimes(3);
+    expect(sender.send).toHaveBeenCalledWith(
+      'video-editor:equalizer:analyze:response',
+      expect.objectContaining({
+        result: { success: true, analysis: EMPTY_ANALYSIS },
+      })
+    );
+  });
+
+  it('ignores a cancel request without a payload', () => {
+    registerEqualizerHandlers();
+    const cancel = getRegisteredListener('video-editor:equalizer:cancel');
+
+    expect(() => cancel({ sender: createSender(9) })).not.toThrow();
   });
 });

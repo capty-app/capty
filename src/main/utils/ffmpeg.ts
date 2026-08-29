@@ -4,6 +4,7 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import {
+  parseVideoFrameRate,
   VIDEO_QUALITY_PRESETS,
   type VideoExportOptions,
   type VideoMetadata,
@@ -771,7 +772,7 @@ export async function convertMp4ToGif(
   }
 
   const scaleWidth = getGifScaleWidth(resolution);
-  const fps = parseInt(frameRate, 10);
+  const fps = parseVideoFrameRate(frameRate);
 
   let totalDuration = 0;
   try {

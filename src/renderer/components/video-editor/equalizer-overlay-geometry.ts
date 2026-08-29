@@ -71,7 +71,7 @@ function updateCircularEqualizer(
   const bottom = top + initialSide;
   const centerX = left + initialSide / 2;
   const centerY = top + initialSide / 2;
-  const minimumSide = Math.min(
+  const minimumSide = Math.max(
     EQUALIZER_MIN_WIDTH * parentWidth,
     EQUALIZER_MIN_HEIGHT * parentHeight
   );

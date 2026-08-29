@@ -250,6 +250,26 @@ describe('equalizer overlay geometry', () => {
     expect(isValidEqualizerSettings(result)).toBe(true);
   });
 
+  it('respects both circular minimum dimensions on widescreen video', () => {
+    const settings = createSettings({ mode: 'circular' });
+    const result = updateEqualizerForGesture(
+      {
+        mode: 'south-east',
+        startX: 0,
+        startY: 0,
+        parentWidth: 1920,
+        parentHeight: 1080,
+        settings,
+      },
+      -1920,
+      -1080
+    );
+
+    expect(result.width).toBeCloseTo(0.12);
+    expect(result.height).toBeCloseTo(0.12 * (1920 / 1080));
+    expect(isValidEqualizerSettings(result)).toBe(true);
+  });
+
   it('enforces minimum size while resizing from a corner', () => {
     const settings = createSettings({
       x: 0.2,
@@ -577,6 +597,44 @@ describe('equalizer canvas bounds', () => {
       expect.any(Number),
       expect.any(Number)
     );
+  });
+
+  it('keeps spectrum bars inside a narrow overlay', () => {
+    const gradient = { addColorStop: vi.fn() } as unknown as CanvasGradient;
+    const roundRect = vi.fn();
+    const context = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      createLinearGradient: vi.fn(() => gradient),
+      beginPath: vi.fn(),
+      roundRect,
+      fill: vi.fn(),
+      globalAlpha: 1,
+      fillStyle: '',
+      shadowColor: '',
+      shadowBlur: 0,
+    } as unknown as CanvasRenderingContext2D;
+
+    renderEqualizer(context, {
+      settings: createSettings({
+        mode: 'spectrum',
+        x: 0.1,
+        y: 0.2,
+        width: 0.02,
+        height: 0.3,
+        backgroundOpacity: 0,
+      }),
+      frame: {
+        spectrum: new Float32Array(24).fill(0.5),
+        waveform: new Float32Array([0]),
+      },
+      videoWidth: 1000,
+      videoHeight: 500,
+    });
+
+    expect(roundRect).toHaveBeenCalledTimes(24);
+    const finalBar = roundRect.mock.calls[23] as number[];
+    expect(finalBar[0] + finalBar[2]).toBeCloseTo(120);
   });
 
   it('renders pulse content inside the same square as its selection', () => {

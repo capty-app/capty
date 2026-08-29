@@ -253,6 +253,72 @@ describe('video editor state handlers', () => {
     expect(mockFs.writeFileSync).toHaveBeenCalled();
   });
 
+  it('uses the configured frame rate for first-frame timeline validation', async () => {
+    const state = createState({
+      firstFrame: {
+        enabled: true,
+        imageData: 'data:image/png;base64,image',
+        fit: 'cover',
+      },
+      exportSettings: {
+        format: 'mp4',
+        resolution: '1080p',
+        qualityPreset: 'studio',
+        frameRate: '30',
+        openInFinder: false,
+      },
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'first-frame-equalizer',
+          startTime: 0,
+          endTime: 10 + 1 / 30,
+        },
+      ],
+    });
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(true);
+  });
+
+  it('falls back consistently for a malformed saved frame rate', async () => {
+    const state = createState({
+      firstFrame: {
+        enabled: true,
+        imageData: 'data:image/png;base64,image',
+        fit: 'cover',
+      },
+      exportSettings: {
+        format: 'mp4',
+        resolution: '1080p',
+        qualityPreset: 'studio',
+        frameRate: '30fps',
+        openInFinder: false,
+      },
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'first-frame-equalizer',
+          startTime: 0,
+          endTime: 10 + 1 / 30,
+        },
+      ],
+    } as unknown as Partial<VideoEditorState>);
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(
+      false
+    );
+  });
+
   it.each([
     'invalid',
     [

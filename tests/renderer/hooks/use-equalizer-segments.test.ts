@@ -60,11 +60,12 @@ describe('useEqualizerSegments', () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'new-equalizer' });
   });
 
-  it('creates and selects a clip on add', async () => {
+  it('returns the created clip id on add for coordinated selection', async () => {
     const control = await useControl([], 12);
 
-    control.handleAddEqualizer(0, 12);
+    const id = control.handleAddEqualizer(0, 12);
 
+    expect(id).toBe('new-equalizer');
     expect(mocks.set).toHaveBeenCalledOnce();
     expect(getSetUpdaterResult([])).toEqual([
       {
@@ -74,8 +75,8 @@ describe('useEqualizerSegments', () => {
         endTime: 12,
       },
     ]);
-    expect(mocks.setSelectedId).toHaveBeenCalledWith('new-equalizer');
-    expect(mocks.activateSidebarTab).toHaveBeenCalledWith('audio');
+    expect(mocks.setSelectedId).not.toHaveBeenCalled();
+    expect(mocks.activateSidebarTab).not.toHaveBeenCalled();
   });
 
   it('rejects added, moved, and resized clips that overlap another clip', async () => {
@@ -85,26 +86,27 @@ describe('useEqualizerSegments', () => {
     ];
     const control = await useControl(segments);
 
-    control.handleAddEqualizer(2, 6);
+    expect(control.handleAddEqualizer(2, 6)).toBeNull();
     control.handleUpdateEqualizerTime('second', 2.5, 6);
 
     expect(mocks.set).not.toHaveBeenCalled();
     expect(mocks.setWithoutHistory).not.toHaveBeenCalled();
   });
 
-  it('duplicates a clip right after the source and selects the copy', async () => {
+  it('returns the duplicated clip id for coordinated selection', async () => {
     const segments = [createSegment('first', 0, 3)];
     const control = await useControl(segments);
 
-    control.handleDuplicateEqualizer('first');
+    const id = control.handleDuplicateEqualizer('first');
 
+    expect(id).toBe('new-equalizer');
     expect(mocks.set).toHaveBeenCalledOnce();
     expect(getSetUpdaterResult(segments)).toEqual([
       segments[0],
       { ...segments[0], id: 'new-equalizer', startTime: 3, endTime: 6 },
     ]);
-    expect(mocks.setSelectedId).toHaveBeenCalledWith('new-equalizer');
-    expect(mocks.activateSidebarTab).toHaveBeenCalledWith('audio');
+    expect(mocks.setSelectedId).not.toHaveBeenCalled();
+    expect(mocks.activateSidebarTab).not.toHaveBeenCalled();
   });
 
   it('duplicates into the nearest free slot when the source end is taken', async () => {
@@ -136,7 +138,7 @@ describe('useEqualizerSegments', () => {
     ];
     const control = await useControl(segments);
 
-    control.handleDuplicateEqualizer('first');
+    expect(control.handleDuplicateEqualizer('first')).toBeNull();
 
     expect(mocks.set).not.toHaveBeenCalled();
   });

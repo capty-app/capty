@@ -1,19 +1,25 @@
 import { ipcMain } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
+import type { IpcMainEvent } from 'electron';
+import type {
+  AudioAnalysisData,
+  EqualizerAudioSource,
+} from '@/types/equalizer';
+import type { CorrelatedIpcResponse } from '@/types/ipc';
+import {
+  CORRELATED_IPC_CHANNELS,
+  isValidCorrelatedIpcRequestId,
+} from '@/types/ipc';
+import { SUPPORTED_MUSIC_EXTENSIONS } from '@/types/music';
 import { analyzeEqualizerAudio } from '../equalizer-analysis';
-import { getWindowData } from '../window-manager';
 import {
   getMicAudioPath,
   getMusicFolderPath,
   getProjectFolder,
   getSystemAudioPath,
 } from '../recording-project';
-import type {
-  AudioAnalysisData,
-  EqualizerAudioSource,
-} from '@/types/equalizer';
-import { SUPPORTED_MUSIC_EXTENSIONS } from '@/types/music';
+import { getWindowData } from '../window-manager';
 
 interface EqualizerAnalysisResult {
   success: boolean;
@@ -177,72 +183,87 @@ export async function resolveEqualizerAudioPath(
   }
 }
 
+async function analyzeEqualizerRequest(
+  event: IpcMainEvent,
+  requestId: string,
+  source: EqualizerAudioSource
+): Promise<EqualizerAnalysisResult> {
+  const controllerKey = `${event.sender.id}:${requestId}`;
+  if (analysisControllers.has(controllerKey)) {
+    return {
+      success: false,
+      error: 'Audio analysis request already exists',
+    };
+  }
+
+  const controller = new AbortController();
+  const handleDestroyed = () => controller.abort();
+  analysisControllers.set(controllerKey, controller);
+  event.sender.once('destroyed', handleDestroyed);
+
+  try {
+    const inputPath = await resolveEqualizerAudioPath(event.sender.id, source);
+    if (!inputPath) {
+      return { success: false, error: 'Audio source is unavailable' };
+    }
+
+    const analysis = await scheduleAnalysis(controller.signal, () =>
+      analyzeEqualizerAudio(inputPath, controller.signal)
+    );
+    return { success: true, analysis };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Audio analysis failed',
+    };
+  } finally {
+    analysisControllers.delete(controllerKey);
+    event.sender.removeListener('destroyed', handleDestroyed);
+  }
+}
+
+function sendAnalysisResponse(
+  event: IpcMainEvent,
+  requestId: string,
+  result: EqualizerAnalysisResult
+): void {
+  if (event.sender.isDestroyed()) return;
+  const response: CorrelatedIpcResponse<EqualizerAnalysisResult> = {
+    requestId,
+    result,
+  };
+  event.sender.send(
+    CORRELATED_IPC_CHANNELS.equalizerAnalyze.response,
+    response
+  );
+}
+
 export function registerEqualizerHandlers(): void {
   ipcMain.on(
     'video-editor:equalizer:cancel',
-    (event, { requestId }: { requestId?: unknown }) => {
-      if (
-        typeof requestId !== 'string' ||
-        requestId.length === 0 ||
-        requestId.length > 128
-      ) {
-        return;
-      }
+    (event, { requestId }: { requestId?: unknown } = {}) => {
+      if (!isValidCorrelatedIpcRequestId(requestId)) return;
       analysisControllers.get(`${event.sender.id}:${requestId}`)?.abort();
     }
   );
 
-  ipcMain.handle(
-    'video-editor:equalizer:analyze',
+  ipcMain.on(
+    CORRELATED_IPC_CHANNELS.equalizerAnalyze.request,
     async (
       event,
       { requestId, source }: { requestId?: unknown; source?: unknown } = {}
-    ): Promise<EqualizerAnalysisResult> => {
-      if (
-        typeof requestId !== 'string' ||
-        requestId.length === 0 ||
-        requestId.length > 128 ||
-        !isEqualizerAudioSource(source)
-      ) {
-        return { success: false, error: 'Invalid audio analysis request' };
-      }
-
-      const controllerKey = `${event.sender.id}:${requestId}`;
-      if (analysisControllers.has(controllerKey)) {
-        return {
+    ) => {
+      if (!isValidCorrelatedIpcRequestId(requestId)) return;
+      if (!isEqualizerAudioSource(source)) {
+        sendAnalysisResponse(event, requestId, {
           success: false,
-          error: 'Audio analysis request already exists',
-        };
+          error: 'Invalid audio analysis request',
+        });
+        return;
       }
 
-      const controller = new AbortController();
-      const handleDestroyed = () => controller.abort();
-      analysisControllers.set(controllerKey, controller);
-      event.sender.once('destroyed', handleDestroyed);
-
-      try {
-        const inputPath = await resolveEqualizerAudioPath(
-          event.sender.id,
-          source
-        );
-        if (!inputPath) {
-          return { success: false, error: 'Audio source is unavailable' };
-        }
-
-        const analysis = await scheduleAnalysis(controller.signal, () =>
-          analyzeEqualizerAudio(inputPath, controller.signal)
-        );
-        return { success: true, analysis };
-      } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error ? error.message : 'Audio analysis failed',
-        };
-      } finally {
-        analysisControllers.delete(controllerKey);
-        event.sender.removeListener('destroyed', handleDestroyed);
-      }
+      const result = await analyzeEqualizerRequest(event, requestId, source);
+      sendAnalysisResponse(event, requestId, result);
     }
   );
 }
