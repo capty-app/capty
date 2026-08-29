@@ -9,6 +9,12 @@ interface EqualizerRenderOptions {
   videoHeight: number;
 }
 
+interface BarLayout {
+  gap: number;
+  barWidth: number;
+  step: number;
+}
+
 function createGradient(
   ctx: Context2D,
   settings: EqualizerSettings,
@@ -17,17 +23,20 @@ function createGradient(
   width: number,
   height: number
 ): CanvasGradient {
-  const gradient =
-    settings.mode === 'circular'
-      ? ctx.createRadialGradient(
-          x + width / 2,
-          y + height / 2,
-          0,
-          x + width / 2,
-          y + height / 2,
-          Math.max(width, height) / 2
-        )
-      : ctx.createLinearGradient(x, y + height, x + width, y);
+  const isRadial =
+    settings.mode === 'circular' ||
+    settings.mode === 'ring' ||
+    settings.mode === 'pulse';
+  const gradient = isRadial
+    ? ctx.createRadialGradient(
+        x + width / 2,
+        y + height / 2,
+        0,
+        x + width / 2,
+        y + height / 2,
+        Math.max(width, height) / 2
+      )
+    : ctx.createLinearGradient(x, y + height, x + width, y);
   gradient.addColorStop(0, settings.colorStart);
   gradient.addColorStop(1, settings.colorEnd);
   return gradient;
@@ -52,6 +61,12 @@ function renderBackdrop(
   ctx.restore();
 }
 
+function layoutBars(width: number, count: number): BarLayout {
+  const gap = Math.max(2, width * 0.006);
+  const barWidth = Math.max(1, (width - gap * (count - 1)) / count);
+  return { gap, barWidth, step: barWidth + gap };
+}
+
 function renderSpectrum(
   ctx: Context2D,
   values: Float32Array,
@@ -61,9 +76,7 @@ function renderSpectrum(
   height: number,
   gradient: CanvasGradient
 ): void {
-  const count = values.length;
-  const gap = Math.max(2, width * 0.006);
-  const barWidth = Math.max(1, (width - gap * (count - 1)) / count);
+  const { barWidth, step } = layoutBars(width, values.length);
   const usableHeight = height * 0.76;
   const bottom = y + height * 0.88;
 
@@ -71,10 +84,10 @@ function renderSpectrum(
   ctx.shadowColor = 'rgba(96, 165, 250, 0.45)';
   ctx.shadowBlur = Math.max(4, height * 0.06);
 
-  for (let index = 0; index < count; index++) {
+  for (let index = 0; index < values.length; index++) {
     const value = Math.max(0.025, values[index]);
     const barHeight = value * usableHeight;
-    const barX = x + index * (barWidth + gap);
+    const barX = x + index * step;
     const barY = bottom - barHeight;
     const radius = Math.min(barWidth / 2, barHeight / 2);
     ctx.beginPath();
@@ -83,7 +96,7 @@ function renderSpectrum(
   }
 }
 
-function renderWave(
+function renderMirror(
   ctx: Context2D,
   values: Float32Array,
   x: number,
@@ -92,72 +105,50 @@ function renderWave(
   height: number,
   gradient: CanvasGradient
 ): void {
-  if (values.length < 2) return;
-
-  const centerY = y + height / 2;
-  const amplitude = height * 0.34;
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = Math.max(3, height * 0.04);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.shadowColor = 'rgba(34, 211, 238, 0.5)';
-  ctx.shadowBlur = Math.max(5, height * 0.08);
-  ctx.beginPath();
-  ctx.moveTo(x, centerY + values[0] * amplitude);
-
-  for (let index = 1; index < values.length - 1; index++) {
-    const pointX = x + (index / (values.length - 1)) * width;
-    const pointY = centerY + values[index] * amplitude;
-    const nextX = x + ((index + 1) / (values.length - 1)) * width;
-    const nextY = centerY + values[index + 1] * amplitude;
-    ctx.quadraticCurveTo(
-      pointX,
-      pointY,
-      (pointX + nextX) / 2,
-      (pointY + nextY) / 2
-    );
-  }
-
-  ctx.lineTo(x + width, centerY + values[values.length - 1] * amplitude);
-  ctx.stroke();
-}
-
-function renderMirroredWave(
-  ctx: Context2D,
-  values: Float32Array,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  gradient: CanvasGradient
-): void {
-  if (values.length < 2) return;
-
+  const { barWidth, step } = layoutBars(width, values.length);
   const centerY = y + height / 2;
   const amplitude = height * 0.42;
+
   ctx.fillStyle = gradient;
   ctx.shadowColor = 'rgba(139, 92, 246, 0.45)';
-  ctx.shadowBlur = Math.max(5, height * 0.08);
-  ctx.beginPath();
+  ctx.shadowBlur = Math.max(4, height * 0.06);
 
   for (let index = 0; index < values.length; index++) {
-    const pointX = x + (index / (values.length - 1)) * width;
-    const pointY = centerY - Math.abs(values[index]) * amplitude;
-    if (index === 0) {
-      ctx.moveTo(pointX, pointY);
-      continue;
-    }
-    ctx.lineTo(pointX, pointY);
+    const value = Math.max(0.02, values[index]);
+    const barHeight = value * amplitude;
+    const barX = x + index * step;
+    const barY = centerY - barHeight;
+    const radius = Math.min(barWidth / 2, barHeight / 2);
+    ctx.beginPath();
+    ctx.roundRect(barX, barY, barWidth, barHeight * 2, radius);
+    ctx.fill();
   }
+}
 
-  for (let index = values.length - 1; index >= 0; index--) {
-    const pointX = x + (index / (values.length - 1)) * width;
-    const pointY = centerY + Math.abs(values[index]) * amplitude;
-    ctx.lineTo(pointX, pointY);
+function renderDots(
+  ctx: Context2D,
+  values: Float32Array,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  gradient: CanvasGradient
+): void {
+  const cell = width / values.length;
+  const centerY = y + height / 2;
+  const maxRadius = Math.min(cell * 0.42, height * 0.4);
+
+  ctx.fillStyle = gradient;
+  ctx.shadowColor = 'rgba(34, 211, 238, 0.5)';
+  ctx.shadowBlur = Math.max(4, height * 0.05);
+
+  for (let index = 0; index < values.length; index++) {
+    const value = Math.max(0.06, values[index]);
+    const radius = Math.max(1.5, maxRadius * value);
+    ctx.beginPath();
+    ctx.arc(x + cell * (index + 0.5), centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
   }
-
-  ctx.closePath();
-  ctx.fill();
 }
 
 function renderCircular(
@@ -203,12 +194,110 @@ function renderCircular(
   ctx.stroke();
 }
 
+function traceSmoothRing(
+  ctx: Context2D,
+  points: Array<{ x: number; y: number }>
+): void {
+  const midPoint = (from: number, to: number) => ({
+    x: (points[from].x + points[to].x) / 2,
+    y: (points[from].y + points[to].y) / 2,
+  });
+
+  const firstMid = midPoint(0, points.length - 1);
+  ctx.moveTo(firstMid.x, firstMid.y);
+
+  for (let index = 0; index < points.length; index++) {
+    const next = (index + 1) % points.length;
+    const mid = midPoint(index, next);
+    ctx.quadraticCurveTo(points[index].x, points[index].y, mid.x, mid.y);
+  }
+
+  ctx.closePath();
+}
+
+function renderRing(
+  ctx: Context2D,
+  values: Float32Array,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  gradient: CanvasGradient
+): void {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const minDimension = Math.min(width, height);
+  const innerRadius = minDimension * 0.28;
+  const maxExtension = minDimension * 0.18;
+  const lineWidth = Math.max(2, minDimension * 0.02);
+  const points: Array<{ x: number; y: number }> = [];
+
+  for (let index = 0; index < values.length; index++) {
+    const angle = (index / values.length) * Math.PI * 2 - Math.PI / 2;
+    const radius = innerRadius + maxExtension * Math.max(0.04, values[index]);
+    points.push({
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+    });
+  }
+
+  ctx.strokeStyle = gradient;
+  ctx.fillStyle = gradient;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(139, 92, 246, 0.45)';
+  ctx.shadowBlur = Math.max(5, minDimension * 0.05);
+
+  ctx.beginPath();
+  traceSmoothRing(ctx, points);
+  const baseAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = baseAlpha * 0.16;
+  ctx.fill();
+  ctx.globalAlpha = baseAlpha;
+  ctx.stroke();
+}
+
+function renderPulse(
+  ctx: Context2D,
+  values: Float32Array,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  gradient: CanvasGradient
+): void {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const minDimension = Math.min(width, height);
+  let level = 0;
+  for (let index = 0; index < values.length; index++) {
+    level += values[index];
+  }
+  level /= values.length;
+
+  const radius = minDimension * (0.16 + 0.18 * Math.max(0.03, level));
+
+  ctx.fillStyle = gradient;
+  ctx.shadowColor = 'rgba(96, 165, 250, 0.5)';
+  ctx.shadowBlur = Math.max(6, minDimension * 0.08);
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha *= 0.35;
+  ctx.lineWidth = Math.max(1, minDimension * 0.012);
+  ctx.strokeStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius * 1.28, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 export function renderEqualizer(
   ctx: Context2D,
   options: EqualizerRenderOptions
 ): void {
   const { settings, frame, videoWidth, videoHeight } = options;
-  if (!settings.enabled) return;
 
   const layoutSettings = getEqualizerLayoutSettings(
     settings,
@@ -231,14 +320,20 @@ export function renderEqualizer(
     case 'spectrum':
       renderSpectrum(ctx, frame.spectrum, x, y, width, height, gradient);
       break;
-    case 'wave':
-      renderWave(ctx, frame.waveform, x, y, width, height, gradient);
+    case 'mirror':
+      renderMirror(ctx, frame.spectrum, x, y, width, height, gradient);
       break;
-    case 'mirrored-wave':
-      renderMirroredWave(ctx, frame.waveform, x, y, width, height, gradient);
+    case 'dots':
+      renderDots(ctx, frame.spectrum, x, y, width, height, gradient);
       break;
     case 'circular':
       renderCircular(ctx, frame.spectrum, x, y, width, height, gradient);
+      break;
+    case 'ring':
+      renderRing(ctx, frame.spectrum, x, y, width, height, gradient);
+      break;
+    case 'pulse':
+      renderPulse(ctx, frame.spectrum, x, y, width, height, gradient);
   }
 
   ctx.restore();

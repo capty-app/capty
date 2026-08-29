@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useState } from 'react';
-import { AudioLines, Trash2 } from 'lucide-react';
+import { AudioLines, CopyPlus, Trash2 } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -7,6 +7,7 @@ import {
   ContextMenuTrigger,
 } from '@/renderer/components/ui/context-menu';
 import type { EqualizerSegment } from '@/types/equalizer';
+import { getEqualizerModeLabel } from '../equalizer-modes';
 import Track, { type TrackSegment } from './track';
 import TrackRow from './track-row';
 
@@ -19,6 +20,7 @@ interface EqualizerTrackProps {
   onMove: (id: string, startTime: number, endTime: number) => void;
   onGestureEnd: () => void;
   onAdd: (startTime: number, endTime: number) => void;
+  onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -33,6 +35,7 @@ const EqualizerTrack = forwardRef<HTMLDivElement, EqualizerTrackProps>(
       onMove,
       onGestureEnd,
       onAdd,
+      onDuplicate,
       onDelete,
     },
     ref
@@ -56,10 +59,7 @@ const EqualizerTrack = forwardRef<HTMLDivElement, EqualizerTrackProps>(
             {widthPixels >= 64 ? 'Equalizer' : null}
             {widthPixels >= 130 ? (
               <span className="font-normal text-white/70">
-                {equalizer.mode === 'mirrored-wave'
-                  ? 'Mirror'
-                  : equalizer.mode.charAt(0).toUpperCase() +
-                    equalizer.mode.slice(1)}
+                {getEqualizerModeLabel(equalizer.mode)}
               </span>
             ) : null}
           </span>
@@ -97,10 +97,16 @@ const EqualizerTrack = forwardRef<HTMLDivElement, EqualizerTrackProps>(
           </ContextMenuTrigger>
           <ContextMenuContent className="w-40">
             {contextSegmentId ? (
-              <ContextMenuItem onClick={() => onDelete(contextSegmentId)}>
-                <Trash2 className="mr-2 size-4" />
-                Delete
-              </ContextMenuItem>
+              <>
+                <ContextMenuItem onClick={() => onDuplicate(contextSegmentId)}>
+                  <CopyPlus className="mr-2 size-4" />
+                  Duplicate
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => onDelete(contextSegmentId)}>
+                  <Trash2 className="mr-2 size-4" />
+                  Delete
+                </ContextMenuItem>
+              </>
             ) : (
               <ContextMenuItem disabled>
                 Right-click an equalizer clip

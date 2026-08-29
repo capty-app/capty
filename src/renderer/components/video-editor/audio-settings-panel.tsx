@@ -32,10 +32,8 @@ interface AudioSettingsPanelProps {
   isDemoPlaying: boolean;
   musicTracks: MusicTrack[];
   equalizer: EqualizerSettings | null;
-  equalizerEnabled: boolean;
   isEqualizerLoading: boolean;
   hasEqualizerError: boolean;
-  onEqualizerEnabledChange: (enabled: boolean) => void;
   onEqualizerChange: (settings: EqualizerSettings) => void;
   onAddMusicTrack: () => void;
   onRemoveMusicTrack: (id: string) => void;
@@ -51,10 +49,8 @@ export default function AudioSettingsPanel({
   isDemoPlaying,
   musicTracks,
   equalizer,
-  equalizerEnabled,
   isEqualizerLoading,
   hasEqualizerError,
-  onEqualizerEnabledChange,
   onEqualizerChange,
   onAddMusicTrack,
   onRemoveMusicTrack,
@@ -163,11 +159,9 @@ export default function AudioSettingsPanel({
 
       <EqualizerSettingsSection
         settings={equalizer}
-        enabled={equalizerEnabled}
         tracks={musicTracks}
         isLoading={isEqualizerLoading}
         hasError={hasEqualizerError}
-        onEnabledChange={onEqualizerEnabledChange}
         onChange={onEqualizerChange}
       />
 

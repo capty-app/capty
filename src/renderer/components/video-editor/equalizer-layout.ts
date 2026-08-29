@@ -1,4 +1,5 @@
 import type { EqualizerSettings } from '@/types/equalizer';
+import { isRadialEqualizerMode } from '@/types/equalizer';
 
 export function getEqualizerLayoutSettings(
   settings: EqualizerSettings,
@@ -6,7 +7,7 @@ export function getEqualizerLayoutSettings(
   compositionHeight: number
 ): EqualizerSettings {
   if (
-    settings.mode !== 'circular' ||
+    !isRadialEqualizerMode(settings.mode) ||
     compositionWidth <= 0 ||
     compositionHeight <= 0
   ) {

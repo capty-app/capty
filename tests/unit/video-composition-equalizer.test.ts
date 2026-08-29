@@ -57,7 +57,6 @@ function createConfig(): CompositionConfig {
     equalizerSegments: [
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'equalizer-1',
         startTime: 0,
         endTime: 10,

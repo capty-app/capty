@@ -79,10 +79,8 @@ interface EditorSidebarProps {
   hasKeyboardData: boolean;
   musicTracks: MusicTrack[];
   equalizer: EqualizerSettings | null;
-  equalizerEnabled: boolean;
   isEqualizerLoading: boolean;
   hasEqualizerError: boolean;
-  onEqualizerEnabledChange: (enabled: boolean) => void;
   onEqualizerChange: (settings: EqualizerSettings) => void;
   onAddMusicTrack: () => void;
   onRemoveMusicTrack: (id: string) => void;
@@ -165,10 +163,8 @@ export default function EditorSidebar({
   hasKeyboardData,
   musicTracks,
   equalizer,
-  equalizerEnabled,
   isEqualizerLoading,
   hasEqualizerError,
-  onEqualizerEnabledChange,
   onEqualizerChange,
   onAddMusicTrack,
   onRemoveMusicTrack,
@@ -276,10 +272,8 @@ export default function EditorSidebar({
             isDemoPlaying={isDemoPlaying}
             musicTracks={musicTracks}
             equalizer={equalizer}
-            equalizerEnabled={equalizerEnabled}
             isEqualizerLoading={isEqualizerLoading}
             hasEqualizerError={hasEqualizerError}
-            onEqualizerEnabledChange={onEqualizerEnabledChange}
             onEqualizerChange={onEqualizerChange}
             onAddMusicTrack={onAddMusicTrack}
             onRemoveMusicTrack={onRemoveMusicTrack}

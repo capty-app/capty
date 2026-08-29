@@ -1,4 +1,5 @@
-export type EqualizerMode = 'spectrum' | 'wave' | 'mirrored-wave' | 'circular';
+export type EqualizerMode =
+  'spectrum' | 'circular' | 'mirror' | 'dots' | 'ring' | 'pulse';
 
 export type EqualizerSource = 'mix' | string;
 
@@ -6,7 +7,6 @@ export type EqualizerAudioSource =
   { type: 'system' } | { type: 'mic' } | { type: 'music'; fileName: string };
 
 export interface EqualizerSettings {
-  enabled: boolean;
   mode: EqualizerMode;
   source: EqualizerSource;
   x: number;
@@ -52,7 +52,6 @@ export interface EqualizerFrameData {
 }
 
 export const DEFAULT_EQUALIZER_SETTINGS: EqualizerSettings = {
-  enabled: false,
   mode: 'spectrum',
   source: 'mix',
   x: 0.25,
@@ -73,9 +72,16 @@ export const EQUALIZER_ANALYSIS_VALUE_SCALE = 127;
 
 const EQUALIZER_MODES = new Set<EqualizerMode>([
   'spectrum',
-  'wave',
-  'mirrored-wave',
   'circular',
+  'mirror',
+  'dots',
+  'ring',
+  'pulse',
+]);
+const RADIAL_EQUALIZER_MODES = new Set<EqualizerMode>([
+  'circular',
+  'ring',
+  'pulse',
 ]);
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 const MINIMUM_VISIBLE_RATIO = 0.1;
@@ -99,11 +105,14 @@ function isNumberInRange(
   return isFiniteNumber(value) && value >= minimum && value <= maximum;
 }
 
+export function isRadialEqualizerMode(mode: EqualizerMode): boolean {
+  return RADIAL_EQUALIZER_MODES.has(mode);
+}
+
 export function isValidEqualizerSettings(
   value: unknown
 ): value is EqualizerSettings {
   if (!isRecord(value)) return false;
-  if (typeof value.enabled !== 'boolean') return false;
   if (!EQUALIZER_MODES.has(value.mode as EqualizerMode)) return false;
   if (
     typeof value.source !== 'string' ||
@@ -114,14 +123,13 @@ export function isValidEqualizerSettings(
   }
   const width = value.width;
   const height = value.height;
-  const minimumWidth =
-    value.mode === 'circular'
-      ? Number.EPSILON
-      : EQUALIZER_MIN_WIDTH - GEOMETRY_EPSILON;
-  const minimumHeight =
-    value.mode === 'circular'
-      ? Number.EPSILON
-      : EQUALIZER_MIN_HEIGHT - GEOMETRY_EPSILON;
+  const isRadial = isRadialEqualizerMode(value.mode as EqualizerMode);
+  const minimumWidth = isRadial
+    ? Number.EPSILON
+    : EQUALIZER_MIN_WIDTH - GEOMETRY_EPSILON;
+  const minimumHeight = isRadial
+    ? Number.EPSILON
+    : EQUALIZER_MIN_HEIGHT - GEOMETRY_EPSILON;
   if (!isNumberInRange(width, minimumWidth, MAXIMUM_DIMENSION)) return false;
   if (!isNumberInRange(height, minimumHeight, MAXIMUM_DIMENSION)) return false;
   if (!isFiniteNumber(value.x) || !isFiniteNumber(value.y)) return false;
@@ -195,25 +203,26 @@ export function getActiveEqualizerSegment(
   return (
     segments.find(
       segment =>
-        segment.enabled &&
-        timelineTime >= segment.startTime &&
-        timelineTime < segment.endTime
+        timelineTime >= segment.startTime && timelineTime < segment.endTime
     ) ?? null
   );
 }
 
+export type LegacyEqualizerSettings = EqualizerSettings & { enabled?: boolean };
+
 export function migrateLegacyEqualizer(
-  settings: EqualizerSettings | undefined,
+  settings: LegacyEqualizerSettings | undefined,
   totalDuration: number,
   id: string
 ): EqualizerSegment[] {
-  if (!settings?.enabled || totalDuration <= 0) return [];
+  if (!settings || settings.enabled === false || totalDuration <= 0) return [];
+
+  const { enabled: _legacyEnabled, ...restored } = settings;
 
   return [
     {
       ...DEFAULT_EQUALIZER_SETTINGS,
-      ...settings,
-      enabled: true,
+      ...restored,
       id,
       startTime: 0,
       endTime: totalDuration,

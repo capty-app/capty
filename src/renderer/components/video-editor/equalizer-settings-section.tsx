@@ -1,10 +1,4 @@
-import {
-  AudioLines,
-  AudioWaveform,
-  BarChart3,
-  Circle,
-  RotateCcw,
-} from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Label } from '@/renderer/components/ui/label';
 import {
@@ -15,32 +9,19 @@ import {
   SelectValue,
 } from '@/renderer/components/ui/select';
 import { Slider } from '@/renderer/components/ui/slider';
-import { Switch } from '@/renderer/components/ui/switch';
 import { cn } from '@/renderer/lib/utils';
-import type { EqualizerMode, EqualizerSettings } from '@/types/equalizer';
+import type { EqualizerSettings } from '@/types/equalizer';
 import { DEFAULT_EQUALIZER_SETTINGS } from '@/types/equalizer';
 import type { MusicTrack } from '@/types/music';
+import { EQUALIZER_MODE_OPTIONS } from './equalizer-modes';
 
 interface EqualizerSettingsSectionProps {
   settings: EqualizerSettings | null;
-  enabled: boolean;
   tracks: MusicTrack[];
   isLoading: boolean;
   hasError: boolean;
-  onEnabledChange: (enabled: boolean) => void;
   onChange: (settings: EqualizerSettings) => void;
 }
-
-const MODE_OPTIONS: Array<{
-  value: EqualizerMode;
-  label: string;
-  icon: typeof BarChart3;
-}> = [
-  { value: 'spectrum', label: 'Spectrum', icon: BarChart3 },
-  { value: 'wave', label: 'Wave', icon: AudioLines },
-  { value: 'mirrored-wave', label: 'Mirror', icon: AudioWaveform },
-  { value: 'circular', label: 'Circular', icon: Circle },
-];
 
 interface SliderRowProps {
   label: string;
@@ -84,11 +65,9 @@ function SliderRow({
 
 export default function EqualizerSettingsSection({
   settings,
-  enabled,
   tracks,
   isLoading,
   hasError,
-  onEnabledChange,
   onChange,
 }: EqualizerSettingsSectionProps) {
   const activeTracks = tracks.filter(track => track.enabled);
@@ -99,18 +78,11 @@ export default function EqualizerSettingsSection({
 
   return (
     <div className="space-y-3 border-t pt-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <Label className="text-sm font-medium">Screen Equalizer</Label>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            Add an audio-reactive visualizer
-          </p>
-        </div>
-        <Switch
-          checked={enabled}
-          disabled={!enabled && activeTracks.length === 0}
-          onCheckedChange={onEnabledChange}
-        />
+      <div>
+        <Label className="text-sm font-medium">Screen Equalizer</Label>
+        <p className="text-muted-foreground mt-0.5 text-xs">
+          Add an audio-reactive visualizer from the timeline
+        </p>
       </div>
 
       {activeTracks.length === 0 ? (
@@ -119,16 +91,14 @@ export default function EqualizerSettingsSection({
         </p>
       ) : null}
 
-      {enabled && !settings ? (
+      {!settings ? (
         <p className="text-muted-foreground text-xs">
           Select an equalizer clip on the timeline or in the preview to edit it.
         </p>
-      ) : null}
-
-      {settings ? (
+      ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
-            {MODE_OPTIONS.map(option => {
+            {EQUALIZER_MODE_OPTIONS.map(option => {
               const Icon = option.icon;
               return (
                 <button
@@ -255,7 +225,7 @@ export default function EqualizerSettingsSection({
             </Button>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

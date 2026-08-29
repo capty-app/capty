@@ -1,6 +1,10 @@
 import { getEqualizerLayoutSettings } from './equalizer-layout';
 import type { EqualizerSettings } from '@/types/equalizer';
-import { EQUALIZER_MIN_HEIGHT, EQUALIZER_MIN_WIDTH } from '@/types/equalizer';
+import {
+  EQUALIZER_MIN_HEIGHT,
+  EQUALIZER_MIN_WIDTH,
+  isRadialEqualizerMode,
+} from '@/types/equalizer';
 
 export type EqualizerGestureMode =
   | 'move'
@@ -207,7 +211,7 @@ export function updateEqualizerForGesture(
     });
   }
 
-  if (initial.mode === 'circular') {
+  if (isRadialEqualizerMode(initial.mode)) {
     return updateCircularEqualizer(
       initial,
       gesture.mode,

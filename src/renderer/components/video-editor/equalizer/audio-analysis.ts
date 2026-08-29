@@ -138,7 +138,6 @@ export function getRequiredEqualizerTrackIds(
     .filter(track => {
       if (!track.enabled) return false;
       return segments.some(segment => {
-        if (!segment.enabled) return false;
         if (
           segment.endTime <= track.startTime ||
           segment.startTime >= track.endTime

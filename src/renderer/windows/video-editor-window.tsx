@@ -752,7 +752,6 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
       ? loadedState.equalizerSegments.map(segment => ({
           ...DEFAULT_EQUALIZER_SETTINGS,
           ...segment,
-          enabled: true,
         }))
       : migrateLegacyEqualizer(
           loadedState.equalizer,
@@ -995,10 +994,8 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
           hasKeyboardData={editorData.keyboardData !== null}
           musicTracks={musicControl.musicTracks}
           equalizer={equalizerControl.selectedEqualizer}
-          equalizerEnabled={equalizerControl.equalizerSegments.length > 0}
           isEqualizerLoading={equalizerAnalysis.isLoading}
           hasEqualizerError={equalizerAnalysis.hasError}
-          onEqualizerEnabledChange={equalizerControl.handleSetEnabled}
           onEqualizerChange={handleEqualizerChange}
           onAddMusicTrack={musicControl.handleAddMusicTrack}
           onRemoveMusicTrack={musicControl.handleRemoveMusicTrack}

@@ -39,7 +39,7 @@ export function sampleEqualizerFrame(
   timelineTime: number,
   target?: EqualizerFrameData
 ): EqualizerFrameData | null {
-  if (!settings.enabled || tracks.length === 0) return null;
+  if (tracks.length === 0) return null;
 
   const selectedTracks =
     settings.source === 'mix'

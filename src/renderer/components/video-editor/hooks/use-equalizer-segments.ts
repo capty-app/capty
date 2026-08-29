@@ -10,6 +10,61 @@ interface UseEqualizerSegmentsProps {
   slice: SliceController<EqualizerSegment[]>;
 }
 
+const PLACEMENT_EPSILON = 0.000001;
+
+function overlapsExisting(
+  segments: EqualizerSegment[],
+  startTime: number,
+  endTime: number,
+  excludedId?: string
+): boolean {
+  return segments.some(segment => {
+    if (segment.id === excludedId) return false;
+    return startTime < segment.endTime && endTime > segment.startTime;
+  });
+}
+
+function findFreePlacement(
+  segments: EqualizerSegment[],
+  totalDuration: number,
+  duration: number,
+  preferredStart: number
+): { startTime: number; endTime: number } | null {
+  if (duration <= 0 || duration > totalDuration + PLACEMENT_EPSILON) {
+    return null;
+  }
+
+  const candidates = new Set<number>([
+    preferredStart,
+    0,
+    totalDuration - duration,
+  ]);
+  for (const segment of segments) {
+    candidates.add(segment.endTime);
+    candidates.add(segment.startTime - duration);
+  }
+
+  return (
+    [...candidates]
+      .filter(
+        candidate =>
+          candidate >= 0 &&
+          candidate + duration <= totalDuration + PLACEMENT_EPSILON
+      )
+      .sort(
+        (first, second) =>
+          Math.abs(first - preferredStart) - Math.abs(second - preferredStart)
+      )
+      .map(candidate => ({
+        startTime: candidate,
+        endTime: Math.min(candidate + duration, totalDuration),
+      }))
+      .find(
+        range => !overlapsExisting(segments, range.startTime, range.endTime)
+      ) ?? null
+  );
+}
+
 export function useEqualizerSegments({
   totalTimelineDuration,
   activateSidebarTab,
@@ -63,10 +118,7 @@ export function useEqualizerSegments({
 
   const wouldOverlap = useCallback(
     (startTime: number, endTime: number, excludedId?: string) =>
-      segmentsRef.current.some(segment => {
-        if (segment.id === excludedId) return false;
-        return startTime < segment.endTime && endTime > segment.startTime;
-      }),
+      overlapsExisting(segmentsRef.current, startTime, endTime, excludedId),
     []
   );
 
@@ -99,7 +151,6 @@ export function useEqualizerSegments({
 
       const segment: EqualizerSegment = {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: crypto.randomUUID(),
         startTime: boundedStart,
         endTime: boundedEnd,
@@ -110,28 +161,32 @@ export function useEqualizerSegments({
     [selectEqualizer, setEqualizerSegments, totalTimelineDuration, wouldOverlap]
   );
 
-  const handleSetEnabled = useCallback(
-    (enabled: boolean) => {
-      if (!enabled) {
-        setEqualizerSegments([]);
-        setSelectedEqualizerId(null);
-        return;
-      }
+  const handleDuplicateEqualizer = useCallback(
+    (id: string) => {
+      if (totalTimelineDuration <= 0) return;
 
-      const existing = segmentsRef.current[0];
-      if (existing) {
-        selectEqualizer(existing.id);
-        return;
-      }
+      const source = segmentsRef.current.find(segment => segment.id === id);
+      if (!source) return;
 
-      handleAddEqualizer(0, totalTimelineDuration);
+      const duration = source.endTime - source.startTime;
+      const placement = findFreePlacement(
+        segmentsRef.current,
+        totalTimelineDuration,
+        duration,
+        source.endTime
+      );
+      if (!placement) return;
+
+      const segment: EqualizerSegment = {
+        ...source,
+        id: crypto.randomUUID(),
+        startTime: placement.startTime,
+        endTime: placement.endTime,
+      };
+      setEqualizerSegments(previous => [...previous, segment]);
+      selectEqualizer(segment.id);
     },
-    [
-      handleAddEqualizer,
-      selectEqualizer,
-      setEqualizerSegments,
-      totalTimelineDuration,
-    ]
+    [selectEqualizer, setEqualizerSegments, totalTimelineDuration]
   );
 
   const handleUpdateEqualizerTime = useCallback(
@@ -165,9 +220,7 @@ export function useEqualizerSegments({
     (id: string, settings: EqualizerSettings) => {
       setEqualizerSegments(previous =>
         previous.map(segment =>
-          segment.id === id
-            ? { ...segment, ...settings, enabled: true }
-            : segment
+          segment.id === id ? { ...segment, ...settings } : segment
         )
       );
     },
@@ -179,9 +232,7 @@ export function useEqualizerSegments({
       gestureActiveRef.current = true;
       setWithoutHistory(previous =>
         previous.map(segment =>
-          segment.id === id
-            ? { ...segment, ...settings, enabled: true }
-            : segment
+          segment.id === id ? { ...segment, ...settings } : segment
         )
       );
     },
@@ -216,7 +267,7 @@ export function useEqualizerSegments({
     selectEqualizer,
     clearEqualizerSelection,
     handleAddEqualizer,
-    handleSetEnabled,
+    handleDuplicateEqualizer,
     handleUpdateEqualizerTime,
     handleCommitEqualizerGesture,
     handleUpdateEqualizer,

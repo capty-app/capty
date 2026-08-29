@@ -23,6 +23,7 @@ import {
   EQUALIZER_ANALYSIS_VALUE_SCALE,
   getActiveEqualizerSegment,
   isValidEqualizerSettings,
+  type LegacyEqualizerSettings,
   migrateLegacyEqualizer,
 } from '@/types/equalizer';
 import type { MusicTrack } from '@/types/music';
@@ -65,7 +66,6 @@ function createSettings(
 ): EqualizerSettings {
   return {
     ...DEFAULT_EQUALIZER_SETTINGS,
-    enabled: true,
     sensitivity: 1,
     ...overrides,
   };
@@ -202,7 +202,7 @@ describe('equalizer circular layout', () => {
 });
 
 describe('equalizer overlay geometry', () => {
-  it.each(['spectrum', 'wave', 'mirrored-wave', 'circular'] as const)(
+  it.each(['spectrum', 'mirror', 'dots', 'ring', 'pulse', 'circular'] as const)(
     'allows %s mode to project beyond the frame while remaining recoverable',
     mode => {
       const settings = createSettings({
@@ -530,29 +530,24 @@ describe('equalizer overlay geometry', () => {
 });
 
 describe('equalizer canvas bounds', () => {
-  it('renders waveform content to the configured horizontal edges', () => {
+  it('renders mirror bars to the configured horizontal edges', () => {
     const gradient = { addColorStop: vi.fn() } as unknown as CanvasGradient;
     const context = {
       save: vi.fn(),
       restore: vi.fn(),
       createLinearGradient: vi.fn(() => gradient),
       beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      quadraticCurveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
+      roundRect: vi.fn(),
+      fill: vi.fn(),
       globalAlpha: 1,
-      strokeStyle: '',
-      lineWidth: 1,
-      lineCap: 'butt',
-      lineJoin: 'miter',
+      fillStyle: '',
       shadowColor: '',
       shadowBlur: 0,
     } as unknown as CanvasRenderingContext2D;
 
     renderEqualizer(context, {
       settings: createSettings({
-        mode: 'wave',
+        mode: 'mirror',
         x: 0.1,
         y: 0.2,
         width: 0.4,
@@ -560,7 +555,7 @@ describe('equalizer canvas bounds', () => {
         backgroundOpacity: 0,
       }),
       frame: {
-        spectrum: new Float32Array([0.5]),
+        spectrum: new Float32Array([0.25, 0.75]),
         waveform: new Float32Array([0.2, -0.4, 0.6]),
       },
       videoWidth: 1000,
@@ -573,8 +568,67 @@ describe('equalizer canvas bounds', () => {
       500,
       100
     );
-    expect(context.moveTo).toHaveBeenCalledWith(100, expect.any(Number));
-    expect(context.lineTo).toHaveBeenCalledWith(500, expect.any(Number));
+    expect(context.roundRect).toHaveBeenCalledTimes(2);
+    expect(context.roundRect).toHaveBeenNthCalledWith(
+      2,
+      expect.closeTo(301.2),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number)
+    );
+  });
+
+  it('renders pulse content inside the same square as its selection', () => {
+    const gradient = { addColorStop: vi.fn() } as unknown as CanvasGradient;
+    const context = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      createRadialGradient: vi.fn(() => gradient),
+      beginPath: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      stroke: vi.fn(),
+      globalAlpha: 1,
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      shadowColor: '',
+      shadowBlur: 0,
+    } as unknown as CanvasRenderingContext2D;
+
+    renderEqualizer(context, {
+      settings: createSettings({
+        mode: 'pulse',
+        x: 0.1,
+        y: 0.2,
+        width: 0.6,
+        height: 0.4,
+        backgroundOpacity: 0,
+      }),
+      frame: {
+        spectrum: new Float32Array([0.5]),
+        waveform: new Float32Array([0]),
+      },
+      videoWidth: 1000,
+      videoHeight: 500,
+    });
+
+    expect(context.createRadialGradient).toHaveBeenCalledWith(
+      expect.closeTo(400),
+      200,
+      0,
+      expect.closeTo(400),
+      200,
+      100
+    );
+    expect(context.arc).toHaveBeenCalledWith(
+      expect.closeTo(400),
+      200,
+      expect.any(Number),
+      0,
+      Math.PI * 2
+    );
   });
 
   it('renders circular content inside the same square as its selection', () => {
@@ -632,7 +686,6 @@ describe('equalizer timeline segments', () => {
     mode: EqualizerSettings['mode']
   ): EqualizerSegment => ({
     ...DEFAULT_EQUALIZER_SETTINGS,
-    enabled: true,
     id,
     startTime,
     endTime,
@@ -673,7 +726,7 @@ describe('equalizer timeline segments', () => {
       source: 'mic-audio',
     };
     const mixed = {
-      ...createSegment('mixed-clip', 4, 6, 'wave'),
+      ...createSegment('mixed-clip', 4, 6, 'mirror'),
       source: 'mix',
     };
     const createAudioTrack = (
@@ -713,7 +766,7 @@ describe('equalizer timeline segments', () => {
       {
         enabled: true,
         mode: 'circular',
-      } as EqualizerSettings,
+      } as LegacyEqualizerSettings,
       12,
       'legacy-equalizer'
     );
@@ -721,12 +774,24 @@ describe('equalizer timeline segments', () => {
     expect(restored).toEqual([
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         mode: 'circular',
         id: 'legacy-equalizer',
         startTime: 0,
         endTime: 12,
       },
     ]);
+  });
+
+  it('skips disabled legacy equalizers', () => {
+    const restored = migrateLegacyEqualizer(
+      {
+        enabled: false,
+        mode: 'circular',
+      } as LegacyEqualizerSettings,
+      12,
+      'legacy-equalizer'
+    );
+
+    expect(restored).toEqual([]);
   });
 });

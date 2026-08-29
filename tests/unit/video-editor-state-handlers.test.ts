@@ -205,14 +205,12 @@ describe('video editor state handlers', () => {
       equalizerSegments: [
         {
           ...DEFAULT_EQUALIZER_SETTINGS,
-          enabled: true,
           id: 'equalizer-1',
           startTime: 0,
           endTime: 5,
         },
         {
           ...DEFAULT_EQUALIZER_SETTINGS,
-          enabled: true,
           id: 'equalizer-2',
           startTime: 5,
           endTime: 10,
@@ -235,7 +233,6 @@ describe('video editor state handlers', () => {
       equalizerSegments: [
         {
           ...DEFAULT_EQUALIZER_SETTINGS,
-          enabled: true,
           mode: 'circular',
           id: 'equalizer-circular',
           startTime: 0,
@@ -261,14 +258,12 @@ describe('video editor state handlers', () => {
     [
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'equalizer-1',
         startTime: 0,
         endTime: 6,
       },
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'equalizer-2',
         startTime: 5,
         endTime: 9,
@@ -277,7 +272,6 @@ describe('video editor state handlers', () => {
     [
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'equalizer-1',
         startTime: 0,
         endTime: 11,
@@ -286,7 +280,6 @@ describe('video editor state handlers', () => {
     [
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'equalizer-1',
         startTime: 0,
         endTime: 5,

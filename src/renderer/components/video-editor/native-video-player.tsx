@@ -1390,7 +1390,7 @@ const NativeVideoPlayer = forwardRef<
             />
           )}
 
-          {activeEqualizer?.enabled &&
+          {activeEqualizer &&
           onEqualizerSelect &&
           onEqualizerChange &&
           onEqualizerCommit ? (

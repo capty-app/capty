@@ -25,7 +25,6 @@ function createSegment(
 ): EqualizerSegment {
   return {
     ...DEFAULT_EQUALIZER_SETTINGS,
-    enabled: true,
     id,
     startTime,
     endTime,
@@ -47,6 +46,13 @@ async function useControl(segments: EqualizerSegment[], duration = 10) {
   });
 }
 
+function getSetUpdaterResult(previous: EqualizerSegment[]) {
+  const updater = mocks.set.mock.calls[0][0] as (
+    previous: EqualizerSegment[]
+  ) => EqualizerSegment[];
+  return updater(previous);
+}
+
 describe('useEqualizerSegments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,19 +60,15 @@ describe('useEqualizerSegments', () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'new-equalizer' });
   });
 
-  it('creates and selects a full-duration clip when enabled', async () => {
+  it('creates and selects a clip on add', async () => {
     const control = await useControl([], 12);
 
-    control.handleSetEnabled(true);
+    control.handleAddEqualizer(0, 12);
 
     expect(mocks.set).toHaveBeenCalledOnce();
-    const updater = mocks.set.mock.calls[0][0] as (
-      previous: EqualizerSegment[]
-    ) => EqualizerSegment[];
-    expect(updater([])).toEqual([
+    expect(getSetUpdaterResult([])).toEqual([
       {
         ...DEFAULT_EQUALIZER_SETTINGS,
-        enabled: true,
         id: 'new-equalizer',
         startTime: 0,
         endTime: 12,
@@ -88,6 +90,55 @@ describe('useEqualizerSegments', () => {
 
     expect(mocks.set).not.toHaveBeenCalled();
     expect(mocks.setWithoutHistory).not.toHaveBeenCalled();
+  });
+
+  it('duplicates a clip right after the source and selects the copy', async () => {
+    const segments = [createSegment('first', 0, 3)];
+    const control = await useControl(segments);
+
+    control.handleDuplicateEqualizer('first');
+
+    expect(mocks.set).toHaveBeenCalledOnce();
+    expect(getSetUpdaterResult(segments)).toEqual([
+      segments[0],
+      { ...segments[0], id: 'new-equalizer', startTime: 3, endTime: 6 },
+    ]);
+    expect(mocks.setSelectedId).toHaveBeenCalledWith('new-equalizer');
+    expect(mocks.activateSidebarTab).toHaveBeenCalledWith('audio');
+  });
+
+  it('duplicates into the nearest free slot when the source end is taken', async () => {
+    const segments = [
+      createSegment('first', 0, 3),
+      createSegment('second', 3, 6),
+    ];
+    const control = await useControl(segments);
+
+    control.handleDuplicateEqualizer('first');
+
+    expect(mocks.set).toHaveBeenCalledOnce();
+    expect(getSetUpdaterResult(segments)).toEqual([
+      segments[0],
+      segments[1],
+      {
+        ...segments[0],
+        id: 'new-equalizer',
+        startTime: 6,
+        endTime: 9,
+      },
+    ]);
+  });
+
+  it('does not duplicate a clip when no free slot fits it', async () => {
+    const segments = [
+      createSegment('first', 0, 5),
+      createSegment('second', 5, 10),
+    ];
+    const control = await useControl(segments);
+
+    control.handleDuplicateEqualizer('first');
+
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 
   it('updates only the requested clip settings without changing its timing', async () => {
