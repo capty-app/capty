@@ -459,57 +459,49 @@ export class VideoCompositionEngine {
     const { screenCornerRadius } = frameLayout;
 
     if (zoomTransform.scale !== 1) {
-      const drawScreen = (target: Context2D): void => {
-        target.save();
-        target.translate(videoX, videoY);
-        target.scale(zoomTransform.scale, zoomTransform.scale);
-        target.translate(
-          zoomTransform.translateX / zoomTransform.scale,
-          zoomTransform.translateY / zoomTransform.scale
-        );
-        target.beginPath();
-        target.roundRect(
-          screenX,
-          screenY,
-          videoWidth,
-          videoHeight,
-          screenCornerRadius
-        );
-        target.clip();
-        target.drawImage(video, screenX, screenY, videoWidth, videoHeight);
-        target.restore();
-      };
-
-      drawScreen(ctx);
-
-      renderDeviceFrame(ctx, frameLayout, 0, 0, layout.shadowConfig);
-    } else {
-      const screenOffsetX = videoX + screenX;
-      const screenOffsetY = videoY + screenY;
+      ctx.translate(videoX, videoY);
+      ctx.scale(zoomTransform.scale, zoomTransform.scale);
+      ctx.translate(
+        zoomTransform.translateX / zoomTransform.scale,
+        zoomTransform.translateY / zoomTransform.scale
+      );
 
       ctx.save();
       ctx.beginPath();
       ctx.roundRect(
-        screenOffsetX,
-        screenOffsetY,
+        screenX,
+        screenY,
         videoWidth,
         videoHeight,
         screenCornerRadius
       );
       ctx.clip();
-
-      ctx.drawImage(
-        video,
-        screenOffsetX,
-        screenOffsetY,
-        videoWidth,
-        videoHeight
-      );
+      ctx.drawImage(video, screenX, screenY, videoWidth, videoHeight);
       ctx.restore();
 
-      renderDeviceFrame(ctx, frameLayout, videoX, videoY, layout.shadowConfig);
+      renderDeviceFrame(ctx, frameLayout, 0, 0, layout.shadowConfig);
+      ctx.restore();
+      return;
     }
 
+    const screenOffsetX = videoX + screenX;
+    const screenOffsetY = videoY + screenY;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(
+      screenOffsetX,
+      screenOffsetY,
+      videoWidth,
+      videoHeight,
+      screenCornerRadius
+    );
+    ctx.clip();
+
+    ctx.drawImage(video, screenOffsetX, screenOffsetY, videoWidth, videoHeight);
+    ctx.restore();
+
+    renderDeviceFrame(ctx, frameLayout, videoX, videoY, layout.shadowConfig);
     ctx.restore();
   }
 
