@@ -48,6 +48,7 @@ class MockBrowserWindow {
 }
 
 class MockNotification {
+  static isSupported = () => true;
   constructor(_args: unknown) {
     void _args;
   }

@@ -111,6 +111,7 @@ interface EditorSidebarProps {
   onExportSettingsChange: (settings: ExportSettings) => void;
   onExport: (options: VideoExportOptions) => void;
   isExporting: boolean;
+  exportError: string | null;
   videoDurationSeconds: number;
   hasWallpaper: boolean;
   uploadToCloud: boolean;
@@ -188,6 +189,7 @@ export default function EditorSidebar({
   onExportSettingsChange,
   onExport,
   isExporting,
+  exportError,
   videoDurationSeconds,
   hasWallpaper,
   uploadToCloud,
@@ -317,6 +319,7 @@ export default function EditorSidebar({
             onExportSettingsChange={onExportSettingsChange}
             onExport={onExport}
             isExporting={isExporting}
+            exportError={exportError}
             videoDurationSeconds={videoDurationSeconds}
             hasCamera={hasCameraData}
             hasWallpaper={hasWallpaper}

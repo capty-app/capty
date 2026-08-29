@@ -28,6 +28,27 @@ export const GENERAL_ITEMS: SettingsItem[] = [
     }),
   },
   {
+    id: 'general.showCaptureNotifications',
+    category: 'general',
+    section: 'Application',
+    type: 'switch',
+    label: 'Show capture notifications',
+    description:
+      'Show a notification when a capture is copied to the clipboard',
+    keywords: [
+      'notification',
+      'capture',
+      'clipboard',
+      'copy',
+      'confirmation',
+      'screenshot',
+    ],
+    getValue: s => s.general.showCaptureNotifications,
+    setValue: (s, v) => ({
+      general: { ...s.general, showCaptureNotifications: v },
+    }),
+  },
+  {
     id: 'general.showDeletionNotifications',
     category: 'general',
     section: 'Application',

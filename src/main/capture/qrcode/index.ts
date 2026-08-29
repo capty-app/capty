@@ -1,5 +1,5 @@
 import { exec } from 'child_process';
-import { app, clipboard, Notification } from 'electron';
+import { app, clipboard } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { getConfig } from '@/main/settings';
@@ -9,6 +9,7 @@ import {
   isSupported as isDesktopIconsSupported,
 } from '@/main/capture/desktop-icons';
 import { daemon } from '@/main/daemon';
+import { showNotification } from '@/main/utils/notifications';
 
 export default async function scanQRCode(): Promise<void> {
   const config = getConfig();
@@ -53,22 +54,25 @@ export default async function scanQRCode(): Promise<void> {
 
       if (qrCodeValue && qrCodeValue.trim()) {
         clipboard.writeText(qrCodeValue.trim());
-        showNotification(
-          'QR Code Copied',
-          'QR code value has been copied to clipboard'
-        );
+        showNotification({
+          title: 'QR Code Copied',
+          body: 'QR code value has been copied to clipboard',
+        });
       } else {
-        showNotification(
-          'No QR Code Found',
-          'No QR code was detected in the selected area'
-        );
+        showNotification({
+          title: 'No QR Code Found',
+          body: 'No QR code was detected in the selected area',
+        });
       }
     } catch (err) {
       console.error('QR code scan error:', err);
       if (fs.existsSync(tempScreenshotPath)) {
         fs.unlinkSync(tempScreenshotPath);
       }
-      showNotification('Scan Failed', 'Failed to scan QR code from the image');
+      showNotification({
+        title: 'Scan Failed',
+        body: 'Failed to scan QR code from the image',
+      });
     }
   });
 }
@@ -78,12 +82,4 @@ async function extractQRCode(imagePath: string): Promise<string> {
     imagePath,
   });
   return result?.payload || '';
-}
-
-function showNotification(title: string, body: string): void {
-  const notification = new Notification({
-    title,
-    body,
-  });
-  notification.show();
 }

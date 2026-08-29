@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockDaemonCall = vi.fn();
 const mockGetConfig = vi.fn();
+const mockShowNotification = vi.fn();
 const mockUpdateConfig = vi.fn();
 const mockHideDesktopIcons = vi.fn();
 const mockShowDesktopIcons = vi.fn();
@@ -34,6 +35,10 @@ vi.mock('@/main/daemon', () => ({
     onEvent: vi.fn(),
     offEvent: vi.fn(),
   },
+}));
+
+vi.mock('@/main/utils/notifications', () => ({
+  showNotification: (...a: unknown[]) => mockShowNotification(...a),
 }));
 
 vi.mock('@/main/settings', () => ({
@@ -373,6 +378,7 @@ describe('scroll-capture', () => {
         daemonHandler = cb;
       }) as never);
       mockGetConfig.mockReturnValue({
+        general: { showCaptureNotifications: true },
         screenshot: {
           hideDesktopIcons: false,
           captureToClipboard: true,

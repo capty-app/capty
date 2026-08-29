@@ -5,7 +5,6 @@ import {
   app,
   dialog,
   clipboard,
-  Notification,
 } from 'electron';
 import fs from 'fs';
 import os from 'os';
@@ -13,6 +12,7 @@ import path from 'path';
 import { isDev, devServerUrl } from '@/main/utils/env.ts';
 import { updateHistoryItemByPath, getHistoryItemByPath } from '@/main/history';
 import { registerDockWindow } from '@/main/utils/dock';
+import { showNotification } from '@/main/utils/notifications';
 import type { ImageLayer } from '@/types/editor.ts';
 import type { EditorState } from '@/types/history.ts';
 import type { MultiImageAttachEdge } from '@/types/settings.ts';
@@ -288,10 +288,10 @@ export function openClipboardInEditor(): void {
   const image = clipboard.readImage();
 
   if (image.isEmpty()) {
-    new Notification({
+    showNotification({
       title: 'No Image in Clipboard',
       body: 'Copy an image to your clipboard first, then try again.',
-    }).show();
+    });
     return;
   }
 

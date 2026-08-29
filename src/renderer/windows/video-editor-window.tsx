@@ -886,6 +886,7 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
           onExportSettingsChange={videoExport.setExportSettings}
           onExport={handleExport}
           isExporting={videoExport.isExporting}
+          exportError={videoExport.exportError}
           videoDurationSeconds={playback.totalTimelineDuration}
           hasWallpaper={hasWallpaperEffect(wallpaper)}
           uploadToCloud={uploadToCloud}

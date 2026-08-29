@@ -22,6 +22,7 @@ import type {
 } from '@/types/subtitle';
 import { DEFAULT_SUBTITLE_STYLE, WHISPER_MODELS } from '@/types/subtitle';
 import { FONT_SIZE_OPTIONS } from './constants';
+import { resolveImportResult } from './utils/import-result';
 
 interface SubtitleSettingsPanelProps {
   subtitleStyle: SubtitleStyle;
@@ -74,6 +75,7 @@ export default function SubtitleSettingsPanel({
     useState<SubtitleGenerationStatus>({ status: 'idle' });
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const checkWhisperStatus = useCallback(async () => {
     setDownloadStatus({ status: 'checking' });
@@ -186,12 +188,23 @@ export default function SubtitleSettingsPanel({
 
   const handleImport = useCallback(async () => {
     setIsImporting(true);
+    setImportError(null);
     try {
-      await onSubtitleDataImport();
+      const { error } = await resolveImportResult(
+        onSubtitleDataImport,
+        'The subtitle file could not be imported.'
+      );
+      setImportError(error);
     } finally {
       setIsImporting(false);
     }
   }, [onSubtitleDataImport]);
+
+  const importErrorMessage = importError && (
+    <p className="text-destructive text-center text-xs" role="alert">
+      {importError}
+    </p>
+  );
 
   const hasSubtitles = subtitleData && subtitleData.segments.length > 0;
 
@@ -327,6 +340,8 @@ export default function SubtitleSettingsPanel({
               {isImporting ? 'Importing...' : 'Import from File'}
             </Button>
 
+            {importErrorMessage}
+
             <Button
               variant="outline"
               size="sm"
@@ -415,6 +430,8 @@ export default function SubtitleSettingsPanel({
               ` · Generated with ${subtitleData.meta.model} model`}
             {subtitleData.meta.prompt && ' · Using custom prompt'}
           </DataEditorSection>
+
+          {importErrorMessage}
 
           {hasMicAudio && (
             <div className="flex gap-2">

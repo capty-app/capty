@@ -52,6 +52,7 @@ vi.mock('electron', () => ({
     showItemInFolder: (...a: unknown[]) => mockShellShowItemInFolder(...a),
   },
   Notification: class {
+    static isSupported = () => true;
     constructor(_a: unknown) {
       void _a;
     }

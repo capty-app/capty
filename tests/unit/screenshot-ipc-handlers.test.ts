@@ -51,6 +51,7 @@ vi.mock('electron', () => ({
   clipboard: { writeImage: vi.fn() },
   nativeImage: { createFromBuffer: vi.fn(() => ({})) },
   Notification: class {
+    static isSupported = () => true;
     constructor(_a: unknown) {
       void _a;
     }

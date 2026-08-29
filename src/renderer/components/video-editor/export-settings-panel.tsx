@@ -42,12 +42,14 @@ import {
   formatDuration,
   formatFileSize,
 } from './export-estimation';
+import { InputError } from '@/renderer/components/ui/input-error';
 
 interface ExportSettingsPanelProps {
   exportSettings: ExportSettings;
   onExportSettingsChange: (settings: ExportSettings) => void;
   onExport: (options: VideoExportOptions) => void;
   isExporting: boolean;
+  exportError: string | null;
   videoDurationSeconds: number;
   hasCamera: boolean;
   hasWallpaper: boolean;
@@ -220,6 +222,7 @@ interface ExportEstimateSectionProps {
   hasCamera: boolean;
   hasWallpaper: boolean;
   isExporting: boolean;
+  exportError: string | null;
   onExport: () => void;
   onOpenInFinderChange: (value: boolean) => void;
   uploadToCloud: boolean;
@@ -237,6 +240,7 @@ function ExportEstimateSection({
   hasCamera,
   hasWallpaper,
   isExporting,
+  exportError,
   onExport,
   onOpenInFinderChange,
   uploadToCloud,
@@ -312,6 +316,7 @@ function ExportEstimateSection({
           </p>
         )}
       </div>
+      <InputError message={exportError} />
       <Button className="w-full" onClick={onExport} disabled={isExporting}>
         {buttonText}
       </Button>
@@ -330,6 +335,7 @@ export default function ExportSettingsPanel({
   onExportSettingsChange,
   onExport,
   isExporting,
+  exportError,
   videoDurationSeconds,
   hasCamera,
   hasWallpaper,
@@ -603,6 +609,7 @@ export default function ExportSettingsPanel({
         hasCamera={hasCamera}
         hasWallpaper={hasWallpaper}
         isExporting={isExporting}
+        exportError={exportError}
         onExport={handleExport}
         onOpenInFinderChange={setOpenInFinder}
         uploadToCloud={uploadToCloud}

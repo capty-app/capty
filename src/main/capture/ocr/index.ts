@@ -1,5 +1,5 @@
 import { exec } from 'child_process';
-import { app, clipboard, Notification } from 'electron';
+import { app, clipboard } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { getConfig } from '@/main/settings';
@@ -9,6 +9,7 @@ import {
   isSupported as isDesktopIconsSupported,
 } from '@/main/capture/desktop-icons';
 import { daemon } from '@/main/daemon';
+import { showNotification } from '@/main/utils/notifications';
 
 export default async function captureText(): Promise<void> {
   const config = getConfig();
@@ -51,19 +52,22 @@ export default async function captureText(): Promise<void> {
       if (extractedText && extractedText.trim()) {
         const trimmedText = extractedText.trim();
         clipboard.writeText(trimmedText);
-        showNotification('Text copied!', trimmedText);
+        showNotification({ title: 'Text copied!', body: trimmedText });
       } else {
-        showNotification(
-          'No Text Found',
-          'No text was detected in the selected area'
-        );
+        showNotification({
+          title: 'No Text Found',
+          body: 'No text was detected in the selected area',
+        });
       }
     } catch (err) {
       console.error('OCR error:', err);
       if (fs.existsSync(tempScreenshotPath)) {
         fs.unlinkSync(tempScreenshotPath);
       }
-      showNotification('OCR Failed', 'Failed to extract text from the image');
+      showNotification({
+        title: 'OCR Failed',
+        body: 'Failed to extract text from the image',
+      });
     }
   });
 }
@@ -73,12 +77,4 @@ async function extractTextFromImage(imagePath: string): Promise<string> {
     imagePath,
   });
   return result?.text || '';
-}
-
-function showNotification(title: string, body: string): void {
-  const notification = new Notification({
-    title,
-    body,
-  });
-  notification.show();
 }

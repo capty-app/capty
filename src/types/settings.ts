@@ -203,6 +203,7 @@ export interface SettingsConfig {
     playSoundOnScreenshot: boolean;
     hideMenuBarIcon: boolean;
     showDeletionNotifications: boolean;
+    showCaptureNotifications: boolean;
   };
   screenshot: {
     closeOnCopy: boolean;
@@ -385,6 +386,7 @@ export const DEFAULT_SETTINGS: SettingsConfig = {
     playSoundOnScreenshot: true,
     hideMenuBarIcon: false,
     showDeletionNotifications: true,
+    showCaptureNotifications: true,
   },
   screenshot: {
     closeOnCopy: false,

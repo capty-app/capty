@@ -26,6 +26,7 @@ vi.mock('fs', () => ({
 }));
 
 class MockNotification {
+  static isSupported = () => true;
   constructor(_a: unknown) {
     void _a;
   }
