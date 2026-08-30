@@ -49,7 +49,7 @@
   --track-draw: oklch(0.63 0.12 165);
   --track-music: oklch(0.55 0.22 300);
   --trim-pin: oklch(0.76 0.14 70);
-  --playhead: var(--track-zoom);
+  --playhead: var(--destructive);
 }
 
 @media (prefers-color-scheme: dark) {

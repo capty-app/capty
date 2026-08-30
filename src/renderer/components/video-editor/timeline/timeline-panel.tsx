@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react';
+import { PenLine } from 'lucide-react';
 import type { Segment } from '../types';
 import type { usePlaybackControl } from '../hooks/use-playback-control';
 import type { useSegmentOperations } from '../hooks/use-segment-operations';
@@ -154,7 +155,11 @@ export default function TimelinePanel({
             {
               key: 'drawings',
               node: (
-                <TrackRow key="drawings" className="group relative">
+                <TrackRow
+                  key="drawings"
+                  className="group"
+                  label={{ icon: PenLine, text: 'Drawings' }}
+                >
                   <div className="border-border text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-dashed text-xs opacity-0 transition-opacity group-hover:opacity-100">
                     Draw on the video to add annotations
                   </div>
