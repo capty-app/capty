@@ -1,6 +1,8 @@
 import type { EditorProjectV2 } from './document';
 import type { Rational } from './time';
 
+export const EDITOR_EXPORT_CHUNK_SIZE = 4 * 1024 * 1024;
+
 export type EditorExportFormat = 'mp4' | 'gif';
 export type EditorExportResolution =
   'original' | '4k' | '1080p' | '720p' | '480p';
@@ -45,5 +47,38 @@ export interface EditorExportResult {
   jobId: string;
   status: 'completed' | 'cancelled' | 'failed';
   outputToken?: string;
+  uploadUrl?: string;
   error?: string;
 }
+
+export interface EditorExportChunk {
+  jobId: string;
+  chunkId: string;
+  position: number;
+  data: Uint8Array<ArrayBuffer>;
+}
+
+export interface EditorExportChunkAck {
+  jobId: string;
+  chunkId: string;
+  error?: string;
+}
+
+export const clampEditorExportSettingsToFree = (
+  settings: EditorExportSettings
+): EditorExportSettings => ({
+  ...settings,
+  format: 'mp4',
+  resolution:
+    settings.resolution === '720p' ||
+    settings.resolution === '480p' ||
+    settings.resolution === '1080p'
+      ? settings.resolution
+      : '1080p',
+  quality: settings.quality === 'studio' ? 'social' : settings.quality,
+  frameRate:
+    settings.frameRate.numerator / settings.frameRate.denominator > 30
+      ? { numerator: 30, denominator: 1 }
+      : settings.frameRate,
+  uploadWhenComplete: false,
+});

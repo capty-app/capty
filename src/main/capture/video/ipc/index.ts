@@ -11,6 +11,7 @@ import { registerProjectHandlers } from './project-handlers';
 import { registerMusicHandlers } from './music-handlers';
 import { registerEditorV2DataHandlers } from '@/main/editor-v2/ipc/data-handlers';
 import { registerEditorV2DevHandlers } from '@/main/editor-v2/ipc/dev-handlers';
+import { registerEditorV2ExportHandlers } from '@/main/editor-v2/ipc/export-handlers';
 import { registerEditorV2ProjectHandlers } from '@/main/editor-v2/ipc/project-handlers';
 import { registerEditorV2MediaHandlers } from '@/main/editor-v2/ipc/media-handlers';
 import { isDev } from '@/main/utils/env';
@@ -31,6 +32,7 @@ export function registerAllVideoEditorHandlers(): void {
     registerEditorV2ProjectHandlers();
     registerEditorV2MediaHandlers();
     registerEditorV2DataHandlers();
+    registerEditorV2ExportHandlers();
     registerEditorV2DevHandlers();
   }
 }
@@ -49,6 +51,7 @@ export {
   registerMusicHandlers,
   registerEditorV2DataHandlers,
   registerEditorV2DevHandlers,
+  registerEditorV2ExportHandlers,
   registerEditorV2ProjectHandlers,
   registerEditorV2MediaHandlers,
 };

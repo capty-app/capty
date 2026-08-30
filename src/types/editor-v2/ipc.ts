@@ -11,9 +11,11 @@ import type {
   MediaSourceRole,
 } from './media';
 import type {
+  EditorExportChunk,
   EditorExportProgress,
   EditorExportResult,
   EditorExportSettings,
+  EditorExportSnapshot,
 } from './export';
 import type { EditorV2Workspace } from './workspace';
 
@@ -200,12 +202,26 @@ export interface EditorV2StartExportRequest {
   settings: EditorExportSettings;
 }
 
-export interface EditorV2StartExportResult {
+export type EditorV2StartExportResult =
+  | {
+      status: 'started';
+      jobId: string;
+      snapshot: EditorExportSnapshot;
+    }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+export interface EditorV2FinishExportRequest {
   jobId: string;
 }
 
+export type EditorV2FinishExportResult =
+  | { status: 'accepted' }
+  | { status: 'failed'; error: string };
+
 export interface EditorV2CancelExportRequest {
   jobId: string;
+  error?: string;
 }
 
 export interface EditorV2FlushRequest {
@@ -250,6 +266,7 @@ export interface EditorV2IpcRequestMap {
   'editor-v2:data:import-subtitles': EditorV2DataCreateRequest;
   'editor-v2:data:generate-subtitles': EditorV2SubtitleGenerateRequest;
   'editor-v2:export:start': EditorV2StartExportRequest;
+  'editor-v2:export:finish': EditorV2FinishExportRequest;
   'editor-v2:export:cancel': EditorV2CancelExportRequest;
   'editor-v2:version:switch': EditorVersionSwitchRequest;
 }
@@ -273,6 +290,7 @@ export interface EditorV2IpcResultMap {
   'editor-v2:data:import-subtitles': EditorV2DataMutationResult;
   'editor-v2:data:generate-subtitles': EditorV2DataMutationResult;
   'editor-v2:export:start': EditorV2StartExportResult;
+  'editor-v2:export:finish': EditorV2FinishExportResult;
   'editor-v2:export:cancel': { accepted: boolean };
   'editor-v2:version:switch': EditorVersionSwitchResult;
 }
@@ -345,6 +363,23 @@ export interface EditorV2Bridge {
   generateSubtitles: (
     request: EditorV2SubtitleGenerateRequest
   ) => Promise<EditorV2DataMutationResult>;
+  startExport: (
+    request: EditorV2StartExportRequest
+  ) => Promise<EditorV2StartExportResult>;
+  writeExportChunk: (chunk: EditorExportChunk) => Promise<void>;
+  reportExportProgress: (progress: EditorExportProgress) => void;
+  finishExport: (
+    request: EditorV2FinishExportRequest
+  ) => Promise<EditorV2FinishExportResult>;
+  cancelExport: (
+    request: EditorV2CancelExportRequest
+  ) => Promise<{ accepted: boolean }>;
+  onExportProgress: (
+    listener: (progress: EditorExportProgress) => void
+  ) => () => void;
+  onExportComplete: (
+    listener: (result: EditorExportResult) => void
+  ) => () => void;
   switchVersion: (
     request: EditorVersionSwitchRequest
   ) => Promise<EditorVersionSwitchResult>;

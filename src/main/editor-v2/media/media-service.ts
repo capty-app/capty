@@ -47,7 +47,7 @@ const isMissingError = (error: unknown): boolean =>
 const compatibleKinds = (asset: MediaAsset, replacement: MediaAsset): boolean =>
   asset.kind === replacement.kind && asset.kind !== 'capty-recording';
 
-const resolveAssetSourceLocator = (
+export const resolveAssetSourceLocator = (
   asset: MediaAsset,
   sourceStreamId: string | undefined,
   sourceRole: MediaSourceRole | undefined

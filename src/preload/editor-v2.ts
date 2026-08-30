@@ -10,6 +10,13 @@ import type {
   EditorV2DataReadResult,
   EditorV2DataRequest,
   EditorV2DataWriteRequest,
+  EditorExportChunk,
+  EditorExportChunkAck,
+  EditorExportProgress,
+  EditorExportResult,
+  EditorV2CancelExportRequest,
+  EditorV2FinishExportRequest,
+  EditorV2FinishExportResult,
   EditorV2FlushRequest,
   EditorV2FlushResult,
   EditorV2LoadErrorPayload,
@@ -30,12 +37,34 @@ import type {
   EditorV2SaveCopyResult,
   EditorV2SaveRequest,
   EditorV2SaveResult,
+  EditorV2StartExportRequest,
+  EditorV2StartExportResult,
   EditorV2SubtitleGenerateRequest,
   EditorV2WorkspaceSaveRequest,
   EditorV2WorkspaceSaveResult,
   EditorVersionSwitchRequest,
   EditorVersionSwitchResult,
 } from '@/types/editor-v2';
+
+const exportChunkAcks = new Map<
+  string,
+  { resolve: () => void; reject: (error: Error) => void }
+>();
+
+ipcRenderer.on(
+  'editor-v2:export:chunk-ack',
+  (_event, ack: EditorExportChunkAck) => {
+    const key = `${ack.jobId}:${ack.chunkId}`;
+    const pending = exportChunkAcks.get(key);
+    if (!pending) return;
+    exportChunkAcks.delete(key);
+    if (ack.error) {
+      pending.reject(new Error(ack.error));
+      return;
+    }
+    pending.resolve();
+  }
+);
 
 const bridge: EditorV2Bridge = {
   onLoad(listener: (payload: EditorV2LoadPayload) => void) {
@@ -177,6 +206,58 @@ const bridge: EditorV2Bridge = {
       'editor-v2:data:generate-subtitles',
       request
     ) as Promise<EditorV2DataMutationResult>;
+  },
+  startExport(request: EditorV2StartExportRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:export:start',
+      request
+    ) as Promise<EditorV2StartExportResult>;
+  },
+  writeExportChunk(chunk: EditorExportChunk) {
+    const data =
+      chunk.data.byteOffset === 0 &&
+      chunk.data.byteLength === chunk.data.buffer.byteLength
+        ? chunk.data
+        : chunk.data.slice();
+    const key = `${chunk.jobId}:${chunk.chunkId}`;
+    return new Promise<void>((resolve, reject) => {
+      exportChunkAcks.set(key, { resolve, reject });
+      ipcRenderer.postMessage(
+        'editor-v2:export:chunk',
+        { ...chunk, data },
+        [data.buffer]
+      );
+    });
+  },
+  reportExportProgress(progress: EditorExportProgress) {
+    ipcRenderer.send('editor-v2:export:renderer-progress', progress);
+  },
+  finishExport(request: EditorV2FinishExportRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:export:finish',
+      request
+    ) as Promise<EditorV2FinishExportResult>;
+  },
+  cancelExport(request: EditorV2CancelExportRequest) {
+    return ipcRenderer.invoke('editor-v2:export:cancel', request) as Promise<{
+      accepted: boolean;
+    }>;
+  },
+  onExportProgress(listener: (progress: EditorExportProgress) => void) {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      progress: EditorExportProgress
+    ) => listener(progress);
+    ipcRenderer.on('editor-v2:export:progress', handler);
+    return () => ipcRenderer.off('editor-v2:export:progress', handler);
+  },
+  onExportComplete(listener: (result: EditorExportResult) => void) {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      result: EditorExportResult
+    ) => listener(result);
+    ipcRenderer.on('editor-v2:export:complete', handler);
+    return () => ipcRenderer.off('editor-v2:export:complete', handler);
   },
   switchVersion(request: EditorVersionSwitchRequest) {
     return ipcRenderer.invoke(

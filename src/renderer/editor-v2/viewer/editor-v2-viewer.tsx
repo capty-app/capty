@@ -24,9 +24,7 @@ import {
   getSequenceOutputDuration,
 } from '@/editor-v2/timeline';
 import { Button } from '@/renderer/components/ui/button';
-import { EditorV2CompositionEngine } from '../composition/composition-engine';
-import { createLegacyCaptyEffectAdapter } from '../composition/legacy-capty-effect-adapter';
-import { BrowserCompositionSourceProvider } from '../composition/source-provider';
+import { createBrowserCompositionEngine } from '../composition/browser-composition-engine';
 import { getCommandTooltip } from '../commands/command-display';
 import {
   createCommandRegistry,
@@ -107,36 +105,10 @@ export default function EditorV2Viewer({
     () => evaluateSequence(project, currentTick),
     [currentTick, project]
   );
-  const engine = useMemo(() => {
-    const mediaAssets = project.assets;
-    return new EditorV2CompositionEngine(
-      new BrowserCompositionSourceProvider(
-        (assetId, sourceStreamId, sourceRole) => {
-          if (!mediaAssets[assetId]) {
-            return Promise.resolve({
-              status: 'failed',
-              error: `Asset ${assetId} does not exist`,
-            });
-          }
-          return window.editorV2.getMediaStatus({
-            projectToken,
-            assetId,
-            sourceStreamId,
-            sourceRole,
-          });
-        }
-      ),
-      createLegacyCaptyEffectAdapter(async (kind, locator) => {
-        const result = await window.editorV2.readData({
-          projectToken,
-          kind,
-          locator,
-        });
-        if (result.status === 'failed') throw new Error(result.error);
-        return result.data;
-      })
-    );
-  }, [project.assets, projectToken]);
+  const engine = useMemo(
+    () => createBrowserCompositionEngine(projectToken, project.assets),
+    [project.assets, projectToken]
+  );
   const resolveKeyboardData = useCallback(
     async (locator: EditableDataLocator) => {
       const result = await window.editorV2.readData({
