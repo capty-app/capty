@@ -1,7 +1,7 @@
 {
   "name": "capty",
   "private": true,
-  "version": "1.14.4",
+  "version": "1.15.0",
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "vite",
