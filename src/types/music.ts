@@ -1,5 +1,3 @@
-import { Mic, Music, Volume2 } from 'lucide-react';
-
 export type AudioTrackSource = 'system' | 'mic' | 'music';
 
 export interface MusicTrack {
@@ -16,12 +14,6 @@ export interface MusicTrack {
   trimEnd: number;
   speed: number;
 }
-
-export const SOURCE_ICONS: Record<AudioTrackSource, typeof Volume2> = {
-  system: Volume2,
-  mic: Mic,
-  music: Music,
-};
 
 export const DEFAULT_MUSIC_TRACK_VOLUME = 0.8;
 

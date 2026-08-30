@@ -15,7 +15,7 @@ import { useStyleUpdater } from './hooks/use-style-updater';
 import type { AudioStyle, KeyboardSoundType } from '@/types/audio';
 import { KEYBOARD_SOUND_OPTIONS } from '@/types/audio';
 import type { MusicTrack } from '@/types/music';
-import { SOURCE_ICONS } from '@/types/music';
+import { SOURCE_ICONS } from './source-icons';
 import {
   PLAYBACK_SPEED_PRESETS,
   formatPlaybackSpeed,

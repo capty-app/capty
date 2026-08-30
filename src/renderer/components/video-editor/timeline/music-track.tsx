@@ -5,7 +5,7 @@ import {
   formatPlaybackSpeed,
 } from '@/types/playback-speed';
 import type { MusicTrack as MusicTrackType } from '@/types/music';
-import { SOURCE_ICONS } from '@/types/music';
+import { SOURCE_ICONS } from '../source-icons';
 import {
   ContextMenu,
   ContextMenuContent,
