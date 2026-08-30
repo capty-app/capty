@@ -17,6 +17,7 @@ export { useStyleUpdater } from './use-style-updater';
 export { useKeyboardSound } from './use-keyboard-sound';
 export { useSidebarShortcuts } from './use-sidebar-shortcuts';
 export { useFirstFrame } from './use-first-frame';
-export { useMusicTracks, buildBuiltInMusicTracks } from './use-music-tracks';
+export { buildBuiltInMusicTracks } from '@/editor-v1/built-in-audio';
+export { useMusicTracks } from './use-music-tracks';
 export { useMusicPlayback } from './use-music-playback';
 export { useResizableHeight } from './use-resizable-height';

@@ -21,13 +21,11 @@ import {
   useSidebarShortcuts,
   useFirstFrame,
   useMusicTracks,
-  buildBuiltInMusicTracks,
   useMusicPlayback,
   DEFAULT_PIXELS_PER_SECOND,
   getFitToViewPixelsPerSecond,
 } from '@/renderer/components/video-editor';
 import type { VideoEditorSidebarShortcuts } from '@/types/settings';
-import type { MusicTrack as MusicTrackType } from '@/types/music';
 import {
   DEFAULT_DRAWING_TOOL_SETTINGS,
   MIN_DRAWING_SEGMENT_DURATION,
@@ -43,11 +41,8 @@ import {
   type VideoExportOptions,
   type ProjectRenameResult,
 } from '@/types/video';
-import {
-  hasWallpaperEffect,
-  DEFAULT_VIDEO_WALLPAPER,
-  IOS_DEVICE_DEFAULT_WALLPAPER,
-} from '@/types/video-wallpaper';
+import { normalizeV1Project } from '@/editor-v1/project-normalizer';
+import { hasWallpaperEffect } from '@/types/video-wallpaper';
 import { SVG_WALLPAPER_PRESETS } from '@/renderer/hooks/useWallpaperState';
 import { adjustTimelineRangeSlices } from '@/renderer/components/video-editor/utils';
 
@@ -574,91 +569,43 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
       return;
     }
 
-    const defaultSegments = [
-      {
-        id: crypto.randomUUID(),
-        originalStart: 0,
-        originalEnd: originalDuration,
-        trimMinStart: 0,
-        trimMaxEnd: originalDuration,
-      },
-    ];
-
-    const iosWallpaper = () => {
-      const randomPreset =
-        SVG_WALLPAPER_PRESETS[
-          Math.floor(Math.random() * SVG_WALLPAPER_PRESETS.length)
-        ];
-      return {
-        ...DEFAULT_VIDEO_WALLPAPER,
-        ...IOS_DEVICE_DEFAULT_WALLPAPER,
-        backgroundImage: randomPreset.imageUrl,
-      };
-    };
-
-    const builtInTracks = buildBuiltInMusicTracks({
+    const normalizedState = normalizeV1Project(loadedState, {
+      recordingDuration: originalDuration,
       systemAudioPath: editorData.systemAudioPath,
       micAudioPath: editorData.micAudioPath,
       hasEmbeddedAudio: editorData.hasEmbeddedAudio,
-      originalDuration,
-    });
-
-    const mergeBuiltIns = (existing: MusicTrackType[]): MusicTrackType[] => {
-      const missing = builtInTracks.filter(
-        b => !existing.some(t => t.source === b.source)
-      );
-      return missing.length === 0 ? existing : [...missing, ...existing];
-    };
-
-    if (!loadedState) {
-      history.initializeDocument({
-        segments: defaultSegments,
-        musicTracks: builtInTracks.length > 0 ? builtInTracks : undefined,
-        wallpaper:
-          recordingType === 'ios-device'
-            ? iosWallpaper()
-            : DEFAULT_VIDEO_WALLPAPER,
-      });
-      return;
-    }
-
-    const validSegments = loadedState.segments.filter(
-      seg =>
-        seg.originalStart >= 0 &&
-        seg.originalEnd <= originalDuration &&
-        seg.originalStart < seg.originalEnd
-    );
-
-    const mergedMusicTracks = mergeBuiltIns(loadedState.musicTracks ?? []);
+      wallpaperPresets: SVG_WALLPAPER_PRESETS,
+      wallpaperRecordingType: recordingType,
+      v1WallpaperPresetIndex:
+        recordingType === 'ios-device' && !loadedState?.wallpaper
+          ? Math.floor(Math.random() * SVG_WALLPAPER_PRESETS.length)
+          : undefined,
+      createSegmentId: () => crypto.randomUUID(),
+      savedAt: new Date().toISOString(),
+    }).state;
 
     history.initializeDocument({
-      segments: validSegments.length > 0 ? validSegments : defaultSegments,
-      zoomSegments: loadedState.zoomSegments,
-      zoomSettings: loadedState.zoomSettings,
-      drawingSegments: loadedState.drawingSegments ?? [],
-      musicTracks: mergedMusicTracks.length > 0 ? mergedMusicTracks : undefined,
-      wallpaper: loadedState.wallpaper
-        ? loadedState.wallpaper
-        : recordingType === 'ios-device'
-          ? iosWallpaper()
-          : DEFAULT_VIDEO_WALLPAPER,
-      firstFrame: loadedState.firstFrame ?? undefined,
-      cursorStyle: loadedState.cursorStyle,
-      cameraStyle: loadedState.cameraStyle,
-      keyboardStyle: loadedState.keyboardStyle,
-      subtitleStyle: loadedState.subtitleStyle,
-      audioStyle: loadedState.audioStyle,
+      segments: normalizedState.segments,
+      zoomSegments: normalizedState.zoomSegments,
+      zoomSettings: normalizedState.zoomSettings,
+      drawingSegments: normalizedState.drawingSegments,
+      musicTracks: normalizedState.musicTracks,
+      wallpaper: normalizedState.wallpaper,
+      firstFrame: normalizedState.firstFrame,
+      cursorStyle: normalizedState.cursorStyle,
+      cameraStyle: normalizedState.cameraStyle,
+      keyboardStyle: normalizedState.keyboardStyle,
+      subtitleStyle: normalizedState.subtitleStyle,
+      audioStyle: normalizedState.audioStyle,
     });
 
-    if (loadedState.exportSettings) {
-      videoExport.restoreExportSettings(loadedState.exportSettings);
-    }
-    if (loadedState.timelineZoom) {
-      setInitialTimelineZoom(loadedState.timelineZoom);
-    }
-    setIsSidebarOpen(loadedState.ui.sidebarOpen);
-    setSidebarTab(loadedState.ui.sidebarTab);
-    setIsScrubAudioEnabled(loadedState.ui.scrubAudioEnabled ?? false);
+    videoExport.restoreExportSettings(normalizedState.exportSettings);
+    setInitialTimelineZoom(
+      normalizedState.timelineZoom ?? DEFAULT_PIXELS_PER_SECOND
+    );
+    setIsSidebarOpen(normalizedState.ui.sidebarOpen);
+    setSidebarTab(normalizedState.ui.sidebarTab);
+    setIsScrubAudioEnabled(normalizedState.ui.scrubAudioEnabled ?? false);
   }, [
     originalDuration,
     segments.length,

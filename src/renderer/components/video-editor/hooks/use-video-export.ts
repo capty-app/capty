@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { DEFAULT_V1_EXPORT_SETTINGS } from '@/editor-v1/normalization-types';
 import type { VideoExportOptions, VideoMetadata } from '@/types/video';
 import type { ExportSettings } from '@/types/video-editor-state';
 import type { CloudUploadState } from '@/types/cloud';
@@ -17,14 +18,6 @@ import { clampExportOptionsToFree } from '@/types/entitlements';
 import { WebCodecsExporter } from '../export';
 import { videoToTimeline, getTotalTimelineDuration } from '../utils';
 import { useToast } from '@/renderer/hooks/useToast';
-
-const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
-  format: 'mp4',
-  resolution: 'original',
-  qualityPreset: 'studio',
-  frameRate: '60',
-  openInFinder: true,
-};
 
 interface ExportConfig {
   filePath: string;
@@ -76,7 +69,7 @@ export function useVideoExport(): UseVideoExportReturn {
   const [exportProgress, setExportProgress] = useState(0);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportSettings, setExportSettings] = useState<ExportSettings>(
-    DEFAULT_EXPORT_SETTINGS
+    DEFAULT_V1_EXPORT_SETTINGS
   );
   const [cloudUploadState, setCloudUploadState] =
     useState<CloudUploadState>('idle');

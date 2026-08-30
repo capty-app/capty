@@ -5,7 +5,6 @@ import type { SubtitleStyle } from './subtitle';
 import type { AudioStyle } from './audio';
 import type { ZoomSegment, ZoomSettings } from './zoom';
 import type { VideoWallpaperSettings } from './video-wallpaper';
-import type { Segment } from '@/renderer/components/video-editor/types';
 import type { DrawingSegment } from './drawing';
 import type {
   VideoFormat,
@@ -16,6 +15,15 @@ import type {
 } from './video';
 import type { FirstFrameSettings } from './first-frame';
 import type { MusicTrack } from './music';
+
+export interface VideoEditorSegment {
+  id: string;
+  originalStart: number;
+  originalEnd: number;
+  trimMinStart: number;
+  trimMaxEnd: number;
+  speed?: number;
+}
 
 export interface ExportSettings {
   format: VideoFormat;
@@ -30,7 +38,7 @@ export interface VideoEditorState {
   savedAt: string;
   recordingType?: RecordingType;
 
-  segments: Segment[];
+  segments: VideoEditorSegment[];
 
   cursorStyle: CursorStyle;
 

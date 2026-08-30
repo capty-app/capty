@@ -1,11 +1,6 @@
-export interface Segment {
-  id: string;
-  originalStart: number;
-  originalEnd: number;
-  trimMinStart: number;
-  trimMaxEnd: number;
-  speed?: number;
-}
+import type { VideoEditorSegment } from '@/types/video-editor-state';
+
+export type Segment = VideoEditorSegment;
 
 export interface TrimState {
   segmentId: string;
