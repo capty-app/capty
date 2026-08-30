@@ -97,6 +97,37 @@ describe('Editor V2 project service', () => {
     expect(isValidProject(v2)).toBe(true);
   });
 
+  it('persists workspace layout and restores it when the project reopens', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Workspace.capty');
+    await fs.mkdir(packagePath);
+    await writeProject(packagePath);
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', undefined);
+    const workspace = {
+      ...opened.workspace,
+      leftDock: { ...opened.workspace.leftDock, size: 384, collapsed: true },
+      timeline: { ...opened.workspace.timeline, height: 336 },
+    };
+
+    await expect(
+      service.saveWorkspace(
+        opened.session,
+        opened.workspace.revision,
+        workspace
+      )
+    ).resolves.toEqual({ status: 'saved', revision: 1 });
+    service.release(opened.session);
+
+    const reopened = await service.open(packagePath, 'window-2', undefined);
+    expect(reopened.workspace).toMatchObject({
+      revision: 1,
+      leftDock: { size: 384, collapsed: true },
+      timeline: { height: 336 },
+    });
+    service.release(reopened.session);
+  });
+
   it('recovers V2-only packages when the atomic target is missing or corrupt', async () => {
     const root = await createTemporaryDirectory();
     const missingTargetPath = path.join(root, 'MissingTarget.capty');
@@ -226,6 +257,41 @@ describe('Editor V2 project service', () => {
     );
     expect(after).toEqual(before);
     service.release(opened.session);
+  });
+
+  it('restores and continues saving V1-only workspace state before project creation', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Legacy.capty');
+    await fs.mkdir(packagePath);
+    await fs.writeFile(path.join(packagePath, 'recording.mov'), 'recording');
+    const importProject = async () => ({
+      project: createProject(),
+      workspace: createDefaultEditorWorkspace(),
+      diagnostics: [],
+    });
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', importProject);
+    const changedWorkspace = {
+      ...opened.workspace,
+      leftDock: { size: 360, collapsed: true },
+    };
+    await expect(
+      service.saveWorkspace(opened.session, 0, changedWorkspace)
+    ).resolves.toEqual({ status: 'saved', revision: 1 });
+    service.release(opened.session);
+
+    const reopened = await service.open(packagePath, 'window-2', importProject);
+    expect(reopened.workspace).toMatchObject({
+      revision: 1,
+      leftDock: { size: 360, collapsed: true },
+    });
+    await expect(
+      service.saveWorkspace(reopened.session, 1, {
+        ...reopened.workspace,
+        rightDock: { size: 300, collapsed: true },
+      })
+    ).resolves.toEqual({ status: 'saved', revision: 2 });
+    service.release(reopened.session);
   });
 
   it('serializes saves and never overwrites a stale revision', async () => {

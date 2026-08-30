@@ -187,6 +187,7 @@ const createVideoSource = async (
   relativePath,
   fingerprint: await fingerprintFile(path.join(packagePath, relativePath)),
   ...probe,
+  recordingOffsetSeconds: 0,
 });
 
 const createAudioSource = async (
@@ -197,7 +198,7 @@ const createAudioSource = async (
   relativePath,
   fingerprint: await fingerprintFile(path.join(packagePath, relativePath)),
   durationSeconds: probe.durationSeconds,
-  recordingOffsetSeconds: probe.recordingOffsetSeconds,
+  recordingOffsetSeconds: 0,
   streams: probe.streams,
 });
 

@@ -228,7 +228,7 @@ export class EditorProjectService {
       return {
         session,
         project: imported.project,
-        workspace: imported.workspace,
+        workspace: workspaceRecovery.value ?? imported.workspace,
         importedInMemory: true,
         divergenceDetected: false,
         recoveredFrom: {

@@ -29,6 +29,7 @@ interface VideoTitleBarProps {
   exportProgress?: number;
   onCancelExport?: () => void;
   onRename?: (newName: string) => Promise<string | null>;
+  onSwitchEditorVersion?: () => void;
 }
 
 export default function VideoTitleBar({
@@ -46,6 +47,7 @@ export default function VideoTitleBar({
   exportProgress = 0,
   onCancelExport,
   onRename,
+  onSwitchEditorVersion,
 }: VideoTitleBarProps) {
   return (
     <div className="drag-region bg-card border-border fixed top-0 right-0 left-0 z-50 flex h-10 w-full items-center justify-between border-b px-2">
@@ -62,6 +64,15 @@ export default function VideoTitleBar({
             onRename={onRename}
           />
         )}
+        {onSwitchEditorVersion ? (
+          <Button
+            variant="outline"
+            className="h-7"
+            onClick={onSwitchEditorVersion}
+          >
+            Open V2
+          </Button>
+        ) : null}
         {onCancelExport && (
           <ExportProgressIndicator
             isExporting={isExporting}

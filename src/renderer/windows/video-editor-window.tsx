@@ -25,6 +25,8 @@ import {
   DEFAULT_PIXELS_PER_SECOND,
   getFitToViewPixelsPerSecond,
 } from '@/renderer/components/video-editor';
+import { canShowEditorVersionSwitch } from '@/renderer/editor-v2/shell/editor-version-switch';
+import type { EditorVersionSwitchResult } from '@/types/editor-v2';
 import type { VideoEditorSidebarShortcuts } from '@/types/settings';
 import {
   DEFAULT_DRAWING_TOOL_SETTINGS,
@@ -49,6 +51,7 @@ import { adjustTimelineRangeSlices } from '@/renderer/components/video-editor/ut
 interface VideoEditorWindowProps {
   params: {
     filePath: string;
+    canSwitchEditorVersion?: boolean;
   };
 }
 
@@ -344,6 +347,16 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
     },
     []
   );
+
+  const handleSwitchEditorVersion = useCallback(async () => {
+    const result = (await window.ipcRenderer.invoke(
+      'editor-v2:version:switch',
+      { targetVersion: 'v2' }
+    )) as EditorVersionSwitchResult;
+    if (result?.status === 'cancelled') {
+      console.error('Failed to switch editor version:', result.error);
+    }
+  }, []);
 
   const { loadedState, isStateLoaded, recordingType, resetState } =
     useEditorStatePersistence({
@@ -680,6 +693,11 @@ export default function VideoEditorWindow({ params }: VideoEditorWindowProps) {
         exportProgress={videoExport.exportProgress}
         onCancelExport={videoExport.handleCancelExport}
         onRename={handleRename}
+        onSwitchEditorVersion={
+          canShowEditorVersionSwitch(!!params.canSwitchEditorVersion)
+            ? handleSwitchEditorVersion
+            : undefined
+        }
       />
 
       <div className="flex min-h-0 flex-1">

@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
+
 const mockExistsSync = vi.fn();
+const mockRealpathSync = vi.fn((filePath: string) => filePath);
+const mockReadFileSync = vi.fn();
 const mockShowOpenDialog = vi.fn();
 const mockGetPrimaryDisplay = vi.fn(() => ({
   workAreaSize: { width: 1920, height: 1080 },
 }));
 const mockRegisterDockWindow = vi.fn().mockResolvedValue(undefined);
 const mockAppFocus = vi.fn();
+const mockProjectOpen = vi.fn();
+const mockProjectRelease = vi.fn();
 
 const browserWindows: MockBrowserWindow[] = [];
 
@@ -25,11 +31,19 @@ class MockBrowserWindow {
   };
 
   destroyed = false;
+  options: Record<string, unknown>;
   loadURL = vi.fn();
   loadFile = vi.fn();
   show = vi.fn();
   focus = vi.fn();
   close = vi.fn();
+  destroy = vi.fn(() => {
+    this.destroyed = true;
+  });
+  maximize = vi.fn();
+  getBounds = vi.fn(() => ({ x: 10, y: 20, width: 1300, height: 850 }));
+  getNormalBounds = vi.fn(() => ({ x: 40, y: 50, width: 1200, height: 780 }));
+  isMaximized = vi.fn(() => false);
   isDestroyed = vi.fn(() => this.destroyed);
   on = vi.fn((event: string, cb: (...a: unknown[]) => unknown) => {
     this.windowHandlers[event] ??= [];
@@ -40,8 +54,8 @@ class MockBrowserWindow {
     this.windowHandlers[event].push(cb);
   });
 
-  constructor(_opts: unknown) {
-    void _opts;
+  constructor(opts: Record<string, unknown>) {
+    this.options = opts;
     browserWindows.push(this);
     MockBrowserWindow.instances.push(this);
   }
@@ -59,8 +73,14 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('fs', () => ({
-  default: { existsSync: (...a: unknown[]) => mockExistsSync(...a) },
+  default: {
+    existsSync: (...a: unknown[]) => mockExistsSync(...a),
+    realpathSync: (filePath: string) => mockRealpathSync(filePath),
+    readFileSync: (...a: unknown[]) => mockReadFileSync(...a),
+  },
   existsSync: (...a: unknown[]) => mockExistsSync(...a),
+  realpathSync: (filePath: string) => mockRealpathSync(filePath),
+  readFileSync: (...a: unknown[]) => mockReadFileSync(...a),
 }));
 
 vi.mock('@/main/utils/env', () => ({
@@ -72,6 +92,17 @@ vi.mock('@/main/utils/dock', () => ({
   registerDockWindow: (...a: unknown[]) => mockRegisterDockWindow(...a),
 }));
 
+vi.mock('@/main/editor-v2/project/project-service', () => ({
+  EditorProjectService: class {
+    open = mockProjectOpen;
+    release = mockProjectRelease;
+  },
+}));
+
+vi.mock('@/main/editor-v2/project/legacy-media-probe', () => ({
+  LegacyFfmpegProbeService: class {},
+}));
+
 describe('window-manager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,6 +110,15 @@ describe('window-manager', () => {
     browserWindows.splice(0);
     MockBrowserWindow.instances.splice(0);
     MockBrowserWindow.webContentsCounter = 0;
+    mockRealpathSync.mockImplementation(filePath => filePath);
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error('missing');
+    });
+    mockProjectOpen.mockResolvedValue({
+      session: { ownerId: 'token' },
+      project: { id: 'project' },
+      workspace: { revision: 0 },
+    });
   });
 
   describe('createVideoEditorWindow', () => {
@@ -106,6 +146,101 @@ describe('window-manager', () => {
       expect(win).toBeDefined();
       const data = m.getWindowData(browserWindows[0].webContents.id);
       expect(data?.filePath).toBe('/path/Rec.capty/recording.mov');
+    });
+
+    it('routes a V2-only package without recording.mov to V2 in development', async () => {
+      mockExistsSync.mockImplementation(filePath =>
+        String(filePath).endsWith('recording.mov') ? false : true
+      );
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify(
+          createEmptyEditorProject({
+            id: 'project',
+            name: 'Project',
+            createdAt: '2026-08-30T00:00:00.000Z',
+            sequenceId: 'sequence',
+            videoTrackId: 'video-track',
+            audioTrackId: 'audio-track',
+          })
+        )
+      );
+      const m = await import('@/main/capture/video/window-manager');
+      const win = m.createVideoEditorWindow('/path/V2.capty');
+
+      expect(win).toBeDefined();
+      expect(m.getWindowData(browserWindows[0].webContents.id)).toMatchObject({
+        editorVersion: 'v2',
+        filePath: '/path/V2.capty',
+      });
+      expect(browserWindows[0].loadURL).toHaveBeenCalledWith(
+        expect.stringContaining('editor=v2')
+      );
+    });
+
+    it('keeps hybrid packages on V1 by default in development', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify(
+          createEmptyEditorProject({
+            id: 'project',
+            name: 'Project',
+            createdAt: '2026-08-30T00:00:00.000Z',
+            sequenceId: 'sequence',
+            videoTrackId: 'video-track',
+            audioTrackId: 'audio-track',
+          })
+        )
+      );
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/path/Hybrid.capty');
+
+      expect(m.getWindowData(browserWindows[0].webContents.id)).toMatchObject({
+        editorVersion: 'v1',
+        filePath: '/path/Hybrid.capty/recording.mov',
+      });
+      expect(browserWindows[0].loadURL).toHaveBeenCalledWith(
+        'http://localhost:5173/'
+      );
+    });
+
+    it('selects the dedicated preload and route for Editor V2', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/path/Rec.capty', { editorVersion: 'v2' });
+      const win = browserWindows[0];
+      const webPreferences = win.options.webPreferences as {
+        preload: string;
+        webSecurity: boolean;
+      };
+      expect(webPreferences.preload).toMatch(/editor-v2-preload\.js$/);
+      expect(webPreferences.webSecurity).toBe(true);
+      expect(win.loadURL).toHaveBeenCalledWith(
+        expect.stringContaining('editor=v2')
+      );
+    });
+
+    it('focuses an existing canonical project instead of opening twice', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      const first = m.createVideoEditorWindow('/path/Rec.capty');
+      const second = m.createVideoEditorWindow('/path/Rec.capty');
+      expect(second).toBe(first);
+      expect(browserWindows).toHaveLength(1);
+      expect(browserWindows[0].focus).toHaveBeenCalled();
+    });
+
+    it('focuses the direct project when opened again through a symlink', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockRealpathSync.mockImplementation(filePath =>
+        filePath === '/alias/project-link' ? '/path/Rec.capty' : filePath
+      );
+      const m = await import('@/main/capture/video/window-manager');
+      const direct = m.createVideoEditorWindow('/path/Rec.capty');
+      const linked = m.createVideoEditorWindow('/alias/project-link');
+
+      expect(linked).toBe(direct);
+      expect(browserWindows).toHaveLength(1);
+      expect(browserWindows[0].focus).toHaveBeenCalled();
     });
   });
 
@@ -182,6 +317,65 @@ describe('window-manager', () => {
     });
   });
 
+  describe('version handoff', () => {
+    it('keeps the old window when the target cannot be recreated', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/p/Project.capty');
+      const oldWindow = browserWindows[0];
+      mockExistsSync.mockReturnValue(false);
+
+      const recreated = await m.recreateVideoEditorWindow(
+        oldWindow.webContents.id,
+        'v2'
+      );
+
+      expect(recreated).toBeUndefined();
+      expect(oldWindow.destroy).not.toHaveBeenCalled();
+      expect(m.getWindowData(oldWindow.webContents.id)?.window).toBe(oldWindow);
+    });
+
+    it('preserves normal bounds and maximized state across recreation', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/p/Project.capty');
+      const oldWindow = browserWindows[0];
+      oldWindow.isMaximized.mockReturnValue(true);
+
+      await m.recreateVideoEditorWindow(oldWindow.webContents.id, 'v2');
+
+      expect(oldWindow.getNormalBounds).toHaveBeenCalled();
+      expect(browserWindows[1].options).toMatchObject({
+        x: 40,
+        y: 50,
+        width: 1200,
+        height: 780,
+      });
+      expect(browserWindows[1].maximize).toHaveBeenCalled();
+    });
+
+    it('preserves bounds and destroys the old window after recreation', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/p/Project.capty');
+      const oldWindow = browserWindows[0];
+
+      const recreated = await m.recreateVideoEditorWindow(
+        oldWindow.webContents.id,
+        'v2'
+      );
+
+      expect(recreated).toBe(browserWindows[1]);
+      expect(oldWindow.destroy).toHaveBeenCalled();
+      expect(browserWindows[1].options).toMatchObject({
+        x: 10,
+        y: 20,
+        width: 1300,
+        height: 850,
+      });
+    });
+  });
+
   describe('window event handlers', () => {
     it('did-finish-load sends load event', async () => {
       mockExistsSync.mockReturnValue(true);
@@ -192,6 +386,39 @@ describe('window-manager', () => {
       expect(win.webContents.send).toHaveBeenCalledWith(
         'load',
         expect.objectContaining({ type: 'video-editor' })
+      );
+    });
+
+    it('did-finish-load reports a V2 project open failure', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockProjectOpen.mockRejectedValue(new Error('project is corrupt'));
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/p/Project.capty', { editorVersion: 'v2' });
+      const win = browserWindows[0];
+      const handlers = win.windowHandlers['wc:did-finish-load'] || [];
+      await handlers[0]();
+
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        'editor-v2:project:load-error',
+        { error: 'project is corrupt' }
+      );
+    });
+
+    it('did-finish-load sends the opaque V2 project payload', async () => {
+      mockExistsSync.mockReturnValue(true);
+      const m = await import('@/main/capture/video/window-manager');
+      m.createVideoEditorWindow('/p/Project.capty', { editorVersion: 'v2' });
+      const win = browserWindows[0];
+      const handlers = win.windowHandlers['wc:did-finish-load'] || [];
+      await handlers[0]();
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        'editor-v2:project:load',
+        expect.objectContaining({
+          projectToken: expect.any(String),
+          displayPath: '/p/Project.capty',
+          project: { id: 'project' },
+          workspace: { revision: 0 },
+        })
       );
     });
 

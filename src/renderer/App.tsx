@@ -10,6 +10,7 @@ import type { EditorState } from '@/types/history';
 import type { CapturePreviewParams } from '@/types/capture-preview';
 import { useAccentColor } from '@/renderer/hooks/useAccentColor';
 import { ToastProvider } from '@/renderer/components/ui/toast';
+import EditorVersionHost from '@/renderer/editor-v2/shell/editor-version-host';
 
 const ScreenshotWindow = lazy(
   () => import('@/renderer/windows/screenshot-window')
@@ -46,6 +47,7 @@ interface PinParams {
 
 interface VideoEditorParams {
   filePath: string;
+  canSwitchEditorVersion?: boolean;
 }
 
 interface LoadEvent {
@@ -65,7 +67,7 @@ interface LoadEvent {
     | Record<string, never>;
 }
 
-function App() {
+function LegacyApp() {
   useAccentColor();
 
   const [windowData, setWindowData] = useState<LoadEvent | null>(null);
@@ -175,6 +177,10 @@ function App() {
       </Suspense>
     </ToastProvider>
   );
+}
+
+function App() {
+  return <EditorVersionHost legacyApp={<LegacyApp />} />;
 }
 
 export default App;

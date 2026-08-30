@@ -14,6 +14,7 @@ import type { VideoWallpaperSettings } from '@/types/video-wallpaper';
 import type { FirstFrameSettings } from '@/types/first-frame';
 import type { MusicTrack } from '@/types/music';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EditorV2FlushRequest } from '@/types/editor-v2';
 import type { Segment } from '../types';
 import type { SidebarTab } from '../editor-sidebar';
 
@@ -60,7 +61,7 @@ export function useEditorStatePersistence({
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasAppliedStateRef = useRef(false);
   const isMountedRef = useRef(true);
-  const isSavingRef = useRef(false);
+  const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const recordingTypeRef = useRef<RecordingType | undefined>();
 
   useEffect(() => {
@@ -99,10 +100,9 @@ export function useEditorStatePersistence({
     }
   }, [isReady, values.segments.length]);
 
-  const saveState = useCallback(() => {
-    if (!isMountedRef.current || isSavingRef.current) return;
-
-    isSavingRef.current = true;
+  const saveState = useCallback((): Promise<boolean> => {
+    if (!isMountedRef.current) return Promise.resolve(false);
+    if (savePromiseRef.current) return savePromiseRef.current;
 
     const state: VideoEditorState = {
       version: 1,
@@ -129,15 +129,24 @@ export function useEditorStatePersistence({
       },
     };
 
-    window.ipcRenderer
+    const savePromise = window.ipcRenderer
       .invoke('video-editor:saveState', state)
+      .then(result => result === true)
       .catch((err: Error) => {
         console.error('Failed to save editor state:', err);
+        return false;
       })
       .finally(() => {
-        isSavingRef.current = false;
+        savePromiseRef.current = null;
       });
+    savePromiseRef.current = savePromise;
+    return savePromise;
   }, [values]);
+
+  const flushState = useCallback(async (): Promise<boolean> => {
+    if (savePromiseRef.current) await savePromiseRef.current;
+    return saveState();
+  }, [saveState]);
 
   useEffect(() => {
     if (
@@ -165,6 +174,37 @@ export function useEditorStatePersistence({
       }
     };
   }, [isStateLoaded, isReady, values, saveState]);
+
+  useEffect(() => {
+    const handleFlushRequest = (
+      _event: Electron.IpcRendererEvent,
+      request: EditorV2FlushRequest
+    ) => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      flushState().then(saved => {
+        window.ipcRenderer.send('video-editor:switch-flush-result', {
+          requestId: request.requestId,
+          status: saved ? 'flushed' : 'failed',
+          projectRevision: 0,
+          workspaceRevision: 0,
+          ...(saved ? {} : { error: 'V1 state save failed' }),
+        });
+      });
+    };
+    window.ipcRenderer.on(
+      'video-editor:switch-flush-request',
+      handleFlushRequest
+    );
+    return () => {
+      window.ipcRenderer.off(
+        'video-editor:switch-flush-request',
+        handleFlushRequest
+      );
+    };
+  }, [flushState]);
 
   const resetState = useCallback(async (): Promise<boolean> => {
     if (saveTimeoutRef.current) {
