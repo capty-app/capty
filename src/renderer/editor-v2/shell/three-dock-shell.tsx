@@ -6,7 +6,11 @@ import EditorTitleBar from './editor-title-bar';
 import InspectorDock from './inspector-dock';
 import TimelineDock from './timeline-dock';
 import EditorV2Viewer from '../viewer/editor-v2-viewer';
-import type { EditorProjectV2, EditorV2Workspace } from '@/types/editor-v2';
+import type {
+  EditorProjectV2,
+  EditorV2LoadPayload,
+  EditorV2Workspace,
+} from '@/types/editor-v2';
 
 interface ThreeDockShellProps {
   displayName: string;
@@ -14,6 +18,7 @@ interface ThreeDockShellProps {
   projectToken: string;
   project: EditorProjectV2;
   workspace: EditorV2Workspace;
+  commandBindings: EditorV2LoadPayload['commandBindings'];
   canSwitchVersion: boolean;
   onWorkspaceChange: (
     update: (workspace: EditorV2Workspace) => EditorV2Workspace
@@ -40,6 +45,7 @@ export default function ThreeDockShell({
   projectToken,
   project,
   workspace,
+  commandBindings,
   canSwitchVersion,
   onWorkspaceChange,
   onWorkspaceCommit,
@@ -49,6 +55,7 @@ export default function ThreeDockShell({
   onSwitchVersion,
 }: ThreeDockShellProps) {
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
+  const [playheadTick, setPlayheadTick] = useState(0);
   const timelineMaximum = Math.max(
     TIMELINE_MINIMUM,
     Math.floor(windowHeight * 0.55)
@@ -164,7 +171,12 @@ export default function ThreeDockShell({
               />
             </>
           ) : null}
-          <EditorV2Viewer projectToken={projectToken} project={project} />
+          <EditorV2Viewer
+            projectToken={projectToken}
+            project={project}
+            currentTick={playheadTick}
+            onCurrentTickChange={setPlayheadTick}
+          />
           {!workspace.rightDock.collapsed ? (
             <>
               <DockResizer
@@ -219,11 +231,13 @@ export default function ThreeDockShell({
             />
             <div className="shrink-0" style={{ height: timelineHeight }}>
               <TimelineDock
-                snappingEnabled={workspace.snappingEnabled}
-                onSnappingChange={snappingEnabled => {
-                  updateWorkspace(current => ({ ...current, snappingEnabled }));
-                  onWorkspaceCommit();
-                }}
+                projectToken={projectToken}
+                workspace={workspace}
+                commandBindings={commandBindings}
+                playheadTick={playheadTick}
+                onPlayheadChange={setPlayheadTick}
+                onWorkspaceChange={updateWorkspace}
+                onWorkspaceCommit={onWorkspaceCommit}
                 onCollapse={toggleTimeline}
               />
             </div>

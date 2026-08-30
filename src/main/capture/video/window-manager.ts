@@ -19,12 +19,17 @@ import { LegacyFfmpegProbeService } from '@/main/editor-v2/project/legacy-media-
 import { EditorCloseCoordinator } from '@/main/editor-v2/project/close-coordinator';
 import { prepareStandaloneEditorProject } from '@/main/editor-v2/media/standalone-project';
 import { mediaUrlRegistry } from '@/main/editor-v2/media/media-url-registry';
+import { createDefaultCommandBindings } from '@/editor-v2/commands/bindings';
 import type { EditorProjectLocation } from '@/types/editor-project';
 import type {
   EditorProjectSession,
   OpenEditorProjectResult,
 } from '@/main/editor-v2/project/project-service';
-import type { EditorV2FlushResult, EditorVersion } from '@/types/editor-v2';
+import type {
+  EditorV2FlushResult,
+  EditorVersion,
+  SerializedCommandBinding,
+} from '@/types/editor-v2';
 
 export interface VideoEditorWindowData {
   window: BrowserWindow;
@@ -48,6 +53,14 @@ interface CreateVideoEditorWindowOptions {
 }
 
 const videoEditorWindows = new Map<number, VideoEditorWindowData>();
+let commandBindingsProvider: () => readonly SerializedCommandBinding[] = () =>
+  createDefaultCommandBindings('darwin');
+
+export const setEditorV2CommandBindingsProvider = (
+  provider: () => readonly SerializedCommandBinding[]
+): void => {
+  commandBindingsProvider = provider;
+};
 const projectService = new EditorProjectService();
 const legacyProbeService = new LegacyFfmpegProbeService();
 
@@ -407,6 +420,7 @@ export function createVideoEditorWindow(
         displayPath,
         project: opened.project,
         workspace: opened.workspace,
+        commandBindings: [...commandBindingsProvider()],
         canSwitchEditorVersion:
           isDev &&
           location.kind === 'capty-package' &&

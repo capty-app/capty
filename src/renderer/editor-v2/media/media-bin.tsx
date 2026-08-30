@@ -7,6 +7,8 @@ interface MediaBinProps {
   assets: MediaAsset[];
   statuses: Record<string, MediaAssetStatus>;
   disabled: boolean;
+  selectedAssetId?: string;
+  onSelect: (assetId: string) => void;
   onRelink: (assetId: string) => void;
   onReveal: (assetId: string) => void;
   onRemove: (assetId: string) => void;
@@ -16,6 +18,8 @@ export default function MediaBin({
   assets,
   statuses,
   disabled,
+  selectedAssetId,
+  onSelect,
   onRelink,
   onReveal,
   onRemove,
@@ -41,6 +45,8 @@ export default function MediaBin({
           asset={asset}
           status={statuses[asset.id]}
           disabled={disabled}
+          selected={selectedAssetId === asset.id}
+          onSelect={() => onSelect(asset.id)}
           onRelink={() => onRelink(asset.id)}
           onReveal={() => onReveal(asset.id)}
           onRemove={() => onRemove(asset.id)}

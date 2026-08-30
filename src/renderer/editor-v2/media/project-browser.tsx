@@ -286,6 +286,10 @@ export default function ProjectBrowser({
         assets={assets}
         statuses={statuses}
         disabled={busy || operationsFrozen || store.frozen}
+        selectedAssetId={
+          store.selection.kind === 'asset' ? store.selection.assetId : undefined
+        }
+        onSelect={assetId => store.setSelection({ kind: 'asset', assetId })}
         onRelink={assetId => void relink(assetId)}
         onReveal={assetId => void reveal(assetId)}
         onRemove={assetId => void remove(assetId)}

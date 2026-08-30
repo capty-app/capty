@@ -136,7 +136,16 @@ export const createAddTrackCommand = (
       track.kind === 'video'
         ? next.sequence.videoTrackIds
         : next.sequence.audioTrackIds;
-    order.splice(index ?? order.length, 0, track.id);
+    const targetIndex = index ?? order.length;
+    if (targetIndex < 0 || targetIndex > order.length) {
+      throw new EditorCommandError('Track insertion index is invalid');
+    }
+    order.splice(targetIndex, 0, track.id);
+    order.forEach((trackId, orderIndex) => {
+      const current = next.sequence.tracks[trackId];
+      if (current.kind === 'video') current.compositingOrder = orderIndex;
+      if (current.kind === 'audio') current.mixOrder = orderIndex;
+    });
     return {
       document: next,
       affectedIds: [track.id],
@@ -151,6 +160,8 @@ export const createRemoveTrackCommand = (trackId: string): EditorCommand => ({
   apply(document) {
     const track = document.sequence.tracks[trackId];
     if (!track) throw new EditorCommandError(`Track ${trackId} does not exist`);
+    if (track.locked)
+      throw new EditorCommandError(`Track ${trackId} is locked`);
     if (track.clipIds.length > 0) {
       throw new EditorCommandError(`Track ${trackId} is not empty`);
     }
@@ -162,6 +173,11 @@ export const createRemoveTrackCommand = (trackId: string): EditorCommand => ({
     const index = order.indexOf(trackId);
     order.splice(index, 1);
     delete next.sequence.tracks[trackId];
+    order.forEach((currentId, orderIndex) => {
+      const current = next.sequence.tracks[currentId];
+      if (current.kind === 'video') current.compositingOrder = orderIndex;
+      if (current.kind === 'audio') current.mixOrder = orderIndex;
+    });
     return {
       document: next,
       affectedIds: [trackId],

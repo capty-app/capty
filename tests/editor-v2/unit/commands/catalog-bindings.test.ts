@@ -166,6 +166,36 @@ describe('Editor V2 command catalog and bindings', () => {
     ).toBe('G');
   });
 
+  it('resolves every timeline keyboard equivalent through catalog IDs', () => {
+    const timelineShortcutIds = [
+      'edit.undo',
+      'edit.redo',
+      'edit.select-all-clips',
+      'edit.clear-selection',
+      'edit.delete-selection',
+      'edit.split-at-playhead',
+      'edit.toggle-snapping',
+      'edit.toggle-ripple',
+      'timeline.zoom-in',
+      'timeline.zoom-out',
+      'timeline.zoom-fit',
+      'clip.nudge-left',
+      'clip.nudge-right',
+    ];
+    const handlers = Object.fromEntries(
+      timelineShortcutIds.map(id => [
+        id,
+        { execute: vi.fn(), isAvailable: () => true },
+      ])
+    );
+    const registry = createCommandRegistry(handlers);
+    for (const id of timelineShortcutIds) {
+      const command = registry.find(candidate => candidate.id === id);
+      expect(command?.defaultBinding).toBeTruthy();
+      expect(command?.isAvailable()).toBe(true);
+    }
+  });
+
   it('injects runtime availability and dispatch without mutable global state', async () => {
     const execute = vi.fn();
     const registry = createCommandRegistry({

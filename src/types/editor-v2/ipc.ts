@@ -1,3 +1,4 @@
+import type { SerializedCommandBinding } from './commands';
 import type { EditorProjectV2 } from './document';
 import type {
   MediaAsset,
@@ -21,6 +22,7 @@ export interface EditorV2LoadPayload {
   displayPath: string;
   project: EditorProjectV2;
   workspace: EditorV2Workspace;
+  commandBindings: SerializedCommandBinding[];
   canSwitchEditorVersion: boolean;
   requiresProjectCreation: boolean;
   mediaRecoveryWarnings: string[];

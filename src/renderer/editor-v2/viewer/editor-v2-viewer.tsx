@@ -33,6 +33,8 @@ import {
 interface EditorV2ViewerProps {
   projectToken: string;
   project: EditorProjectV2;
+  currentTick?: number;
+  onCurrentTickChange?: (tick: number) => void;
 }
 
 type ViewerStatus =
@@ -46,12 +48,24 @@ type ViewerStatus =
 export default function EditorV2Viewer({
   projectToken,
   project,
+  currentTick: controlledCurrentTick,
+  onCurrentTickChange,
 }: EditorV2ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef(0);
   const renderQueueRef = useRef(Promise.resolve());
   const currentTickRef = useRef(0);
-  const [currentTick, setCurrentTick] = useState(0);
+  const [internalCurrentTick, setInternalCurrentTick] = useState(0);
+  const currentTick = controlledCurrentTick ?? internalCurrentTick;
+  const setCurrentTick = useCallback(
+    (update: React.SetStateAction<number>) => {
+      const next =
+        typeof update === 'function' ? update(currentTickRef.current) : update;
+      setInternalCurrentTick(next);
+      onCurrentTickChange?.(next);
+    },
+    [onCurrentTickChange]
+  );
   const [playing, setPlaying] = useState(false);
   const [fit, setFit] = useState(true);
   const [status, setStatus] = useState<ViewerStatus>({ kind: 'empty' });
@@ -175,18 +189,18 @@ export default function EditorV2Viewer({
     };
     frameId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frameId);
-  }, [duration, playing]);
+  }, [duration, playing, setCurrentTick]);
 
   useEffect(() => {
     if (currentTick <= duration) return;
     setCurrentTick(duration);
-  }, [currentTick, duration]);
+  }, [currentTick, duration, setCurrentTick]);
 
   const togglePlayback = useCallback(() => {
     if (duration <= 0) return;
     if (currentTick >= duration) setCurrentTick(0);
     setPlaying(current => !current);
-  }, [currentTick, duration]);
+  }, [currentTick, duration, setCurrentTick]);
 
   const step = useCallback(
     (direction: -1 | 1) => {
@@ -195,7 +209,7 @@ export default function EditorV2Viewer({
         Math.min(duration, Math.max(0, current + direction * frameTicks))
       );
     },
-    [duration, frameTicks]
+    [duration, frameTicks, setCurrentTick]
   );
 
   return (

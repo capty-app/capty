@@ -340,6 +340,7 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
         projectToken={payload.projectToken}
         project={store.document}
         workspace={workspace}
+        commandBindings={payload.commandBindings}
         canSwitchVersion={canShowEditorVersionSwitch(
           payload.canSwitchEditorVersion
         )}

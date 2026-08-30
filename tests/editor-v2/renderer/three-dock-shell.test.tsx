@@ -1,6 +1,7 @@
 import React, { act, useCallback, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createDefaultCommandBindings } from '@/editor-v2/commands/bindings';
 import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
 import { createDefaultEditorWorkspace } from '@/editor-v2/persistence/workspace';
 import ThreeDockShell from '@/renderer/editor-v2/shell/three-dock-shell';
@@ -41,6 +42,7 @@ function Harness({ onCommit }: { onCommit: () => void }) {
         projectToken="token"
         project={project}
         workspace={workspace}
+        commandBindings={createDefaultCommandBindings('darwin')}
         canSwitchVersion
         onWorkspaceChange={updateWorkspace}
         onWorkspaceCommit={onCommit}

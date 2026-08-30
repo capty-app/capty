@@ -16,6 +16,8 @@ interface AssetCardProps {
   asset: MediaAsset;
   status?: MediaAssetStatus;
   disabled: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onRelink: () => void;
   onReveal: () => void;
   onRemove: () => void;
@@ -37,24 +39,38 @@ export default function AssetCard({
   asset,
   status,
   disabled,
+  selected,
+  onSelect,
   onRelink,
   onReveal,
   onRemove,
 }: AssetCardProps) {
   const unavailable = !!status && status.availability !== 'available';
   return (
-    <article className="border-border bg-background overflow-hidden rounded-md border">
-      <div className="bg-muted flex aspect-video items-center justify-center overflow-hidden">
-        {status?.thumbnailUrl ? (
-          <img
-            src={status.thumbnailUrl}
-            alt=""
-            className="size-full object-cover"
-          />
-        ) : (
-          <AssetIcon asset={asset} />
-        )}
-      </div>
+    <article
+      className={`bg-background overflow-hidden rounded-md border ${
+        selected ? 'border-primary ring-primary ring-1' : 'border-border'
+      }`}
+    >
+      <button
+        type="button"
+        className="block w-full text-left"
+        aria-pressed={selected}
+        aria-label={`Select ${asset.name}`}
+        onClick={onSelect}
+      >
+        <div className="bg-muted flex aspect-video items-center justify-center overflow-hidden">
+          {status?.thumbnailUrl ? (
+            <img
+              src={status.thumbnailUrl}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            <AssetIcon asset={asset} />
+          )}
+        </div>
+      </button>
       <div className="p-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-medium">{asset.name}</span>

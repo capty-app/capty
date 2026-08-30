@@ -29,6 +29,7 @@ import * as allInOne from '@/main/capture/all-in-one';
 import * as legal from '@/main/legal';
 import { initDock } from '@/main/utils/dock';
 import { createVideoEditorWindow } from '@/main/capture/video/video-editor';
+import { setEditorV2CommandBindingsProvider } from '@/main/capture/video/window-manager';
 import {
   bufferImageFile,
   flushPendingImages,
@@ -109,6 +110,9 @@ const initializeModules = async () => {
   await license.init();
   activation.init();
   settings.init();
+  setEditorV2CommandBindingsProvider(
+    () => settings.getConfig().shortcuts.editorV2
+  );
   onboarding.init();
   permissions.initPermissionsIPC();
   capture.init();
