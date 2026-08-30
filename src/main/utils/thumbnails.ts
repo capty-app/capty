@@ -54,14 +54,15 @@ export interface ThumbnailResult {
 
 export async function getThumbnail(
   originalPath: string,
-  type: 'screenshot' | 'video'
+  type: 'screenshot' | 'video',
+  cacheIdentity: string = originalPath
 ): Promise<ThumbnailResult> {
   if (!fs.existsSync(originalPath)) {
     return { base64: null, cached: false };
   }
 
   ensureThumbnailsDir();
-  const thumbnailPath = getThumbnailPath(originalPath, 'jpg');
+  const thumbnailPath = getThumbnailPath(cacheIdentity, 'jpg');
 
   if (fs.existsSync(thumbnailPath)) {
     try {

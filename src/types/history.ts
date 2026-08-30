@@ -1,4 +1,5 @@
 import type { Annotation, ImageLayer, WallpaperSettings } from './editor';
+import type { EditorProjectLocation } from './editor-project';
 
 export type HistoryItemType = 'screenshot' | 'video';
 
@@ -15,6 +16,7 @@ export interface HistoryItem {
   type: HistoryItemType;
   editorState: EditorState | null;
   duration?: number;
+  projectLocation?: EditorProjectLocation;
 }
 
 export interface HistoryConfig {

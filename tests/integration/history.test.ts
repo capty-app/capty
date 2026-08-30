@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
 import type { HistoryItem, EditorState } from '@/types/history';
 
 // Mock file system (sync)
@@ -897,6 +898,71 @@ describe('History Management', () => {
         'screenshot'
       );
       expect(result).toBe('mock-thumbnail-base64');
+    });
+
+    it('uses a V2-only visual asset with package-root thumbnail identity', async () => {
+      const project = createEmptyEditorProject({
+        id: 'project',
+        name: 'V2',
+        createdAt: '2026-08-30T00:00:00.000Z',
+        sequenceId: 'sequence',
+        videoTrackId: 'video-track',
+        audioTrackId: 'audio-track',
+      });
+      project.assets.image = {
+        id: 'image',
+        kind: 'image',
+        name: 'Image',
+        locator: { kind: 'managed', relativePath: 'media/image/source.png' },
+        importedAt: '2026-08-30T00:00:00.000Z',
+        width: 100,
+        height: 100,
+        orientation: 1,
+        defaultStillDurationTicks: 360_000,
+      };
+      project.sequence.durationTicks = 360_000;
+      project.sequence.clips.clip = {
+        id: 'clip',
+        kind: 'image',
+        trackId: 'video-track',
+        assetId: 'image',
+        name: 'Image',
+        timelineStart: 0,
+        timelineDuration: 360_000,
+        sourceStart: 0,
+        sourceDuration: 360_000,
+        playbackRate: { numerator: 1, denominator: 1 },
+        opacity: 1,
+        transform: {
+          positionX: 0,
+          positionY: 0,
+          scaleX: 1,
+          scaleY: 1,
+          rotationDegrees: 0,
+          anchorX: 0.5,
+          anchorY: 0.5,
+        },
+        effects: [],
+      };
+      const videoTrack = project.sequence.tracks['video-track'];
+      if (videoTrack.kind !== 'video') return;
+      videoTrack.clipIds.push('clip');
+      mockFs.existsSync.mockImplementation(
+        filePath => filePath === '/test/V2.capty/media/image/source.png'
+      );
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(project));
+      const { getThumbnail } = await import('@/main/utils/thumbnails');
+      const { init } = await import('@/main/history');
+      init();
+
+      const handler = ipcHandlers['history:getThumbnail'];
+      await handler({}, '/test/V2.capty', 'video');
+
+      expect(getThumbnail).toHaveBeenCalledWith(
+        '/test/V2.capty/media/image/source.png',
+        'screenshot',
+        '/test/V2.capty'
+      );
     });
 
     it('should handle history:getThumbnail IPC call - returns null when no thumbnail', async () => {

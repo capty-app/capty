@@ -1,6 +1,11 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { existsSync, mkdirSync, rmSync, renameSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, renameSync } from 'fs';
+import { validateEditorProject } from '@/editor-v2/document/validate';
+import type {
+  EditorProjectFormat,
+  EditorProjectLocation,
+} from '@/types/editor-project';
 import { PROJECT_EXTENSION, type ProjectRenameResult } from '@/types/video';
 
 export const PROJECT_FILES = {
@@ -14,6 +19,11 @@ export const PROJECT_FILES = {
   EDITOR_STATE: 'state.json',
   SUBTITLE: 'subtitle.json',
   MUSIC_FOLDER: 'music',
+  V2_PROJECT: 'project.json',
+  V2_WORKSPACE: 'workspace.json',
+  V2_MEDIA_FOLDER: 'media',
+  V2_DATA_FOLDER: 'data',
+  V2_CACHE_FOLDER: 'cache',
 } as const;
 
 export { PROJECT_EXTENSION };
@@ -140,13 +150,61 @@ export async function deleteProjectFolder(
   }
 }
 
-export function isValidProject(projectPath: string): boolean {
-  if (!isRecordingProject(projectPath)) {
-    return false;
+const hasValidV2Project = (projectPath: string): boolean => {
+  const projectFilePath = path.join(projectPath, PROJECT_FILES.V2_PROJECT);
+  return [
+    projectFilePath,
+    `${projectFilePath}.tmp`,
+    `${projectFilePath}.bak`,
+  ].some(candidatePath => {
+    if (!existsSync(candidatePath)) return false;
+    try {
+      const value: unknown = JSON.parse(readFileSync(candidatePath, 'utf-8'));
+      return validateEditorProject(value).valid;
+    } catch {
+      return false;
+    }
+  });
+};
+
+export function getProjectFormat(
+  projectPath: string
+): EditorProjectFormat | null {
+  if (!isRecordingProject(projectPath)) return null;
+
+  const hasV1 = existsSync(path.join(projectPath, PROJECT_FILES.RECORDING));
+  const hasV2 = hasValidV2Project(projectPath);
+
+  if (hasV1 && hasV2) return 'hybrid';
+  if (hasV2) return 'v2';
+  if (hasV1) return 'v1';
+  return null;
+}
+
+export function getEditorProjectLocation(
+  projectOrSourcePath: string
+): EditorProjectLocation | null {
+  const projectFolder = getProjectFolder(projectOrSourcePath);
+  if (!projectFolder) {
+    return existsSync(projectOrSourcePath)
+      ? { kind: 'standalone', sourcePath: projectOrSourcePath }
+      : null;
   }
 
-  const recordingPath = path.join(projectPath, PROJECT_FILES.RECORDING);
-  return existsSync(recordingPath);
+  const format = getProjectFormat(projectFolder);
+  if (!format) return null;
+
+  const recordingPath = path.join(projectFolder, PROJECT_FILES.RECORDING);
+  return {
+    kind: 'capty-package',
+    packagePath: projectFolder,
+    format,
+    v1RecordingPath: existsSync(recordingPath) ? recordingPath : undefined,
+  };
+}
+
+export function isValidProject(projectPath: string): boolean {
+  return getProjectFormat(projectPath) !== null;
 }
 
 export async function getProjectFiles(

@@ -8,3 +8,4 @@ export * from './selection';
 export * from './time';
 export * from './tracks';
 export * from './transitions';
+export * from './workspace';

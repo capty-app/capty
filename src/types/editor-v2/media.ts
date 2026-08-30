@@ -36,6 +36,7 @@ export interface V2DataLocator {
   kind: 'v2-data';
   relativePath: string;
   fingerprint: MediaFingerprint;
+  provenance?: V1ReadOnlyDataLocator;
 }
 
 export type EditableDataLocator = V1ReadOnlyDataLocator | V2DataLocator;

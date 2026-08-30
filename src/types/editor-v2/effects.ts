@@ -154,4 +154,4 @@ export interface DeviceFrameEffect {
 }
 
 export type SequenceEffect =
-  CanvasSettingsEffect | WallpaperEffect | DeviceFrameEffect;
+  CanvasSettingsEffect | WallpaperEffect | DeviceFrameEffect | AnnotationEffect;

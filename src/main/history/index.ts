@@ -1,6 +1,7 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import path from 'path';
 import fs from 'fs/promises';
-import { existsSync, mkdirSync, unlinkSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, rmSync } from 'fs';
 import crypto from 'crypto';
 import type {
   HistoryItem,
@@ -9,13 +10,22 @@ import type {
   VideoRecordingFeatures,
 } from '@/types/history.ts';
 import { getConfigDir, getHistoryFilePath } from '@/main/utils/paths.ts';
+import { validateEditorProject } from '@/editor-v2/document/validate';
 import {
   getProjectFolder,
   getMicAudioPath,
   getSystemAudioPath,
   getCameraVideoPath,
   getCursorPath,
+  getRecordingVideoPath,
 } from '@/main/capture/video/recording-project.ts';
+import {
+  canonicalizeEditorProjectLocation,
+  getEditorProjectIdentityPath,
+  migrateHistoryProjectIdentity,
+} from '@/main/editor-v2/project/project-identity';
+import { getEditorV2ProjectPaths } from '@/main/editor-v2/project/project-paths';
+import type { EditorProjectV2 } from '@/types/editor-v2';
 
 export {
   preloadHistoryPopover,
@@ -30,6 +40,7 @@ import {
   getThumbnail,
   deleteThumbnail,
   clearAllThumbnails,
+  rekeyThumbnail,
 } from '@/main/utils/thumbnails.ts';
 
 const CONFIG_DIR = getConfigDir();
@@ -38,6 +49,82 @@ const HISTORY_FILE = getHistoryFilePath();
 let historyItems: HistoryItem[] = [];
 
 let writeQueue: Promise<void> = Promise.resolve();
+
+interface HistoryThumbnailSource {
+  sourcePath: string;
+  type: 'screenshot' | 'video';
+  cacheIdentity: string;
+}
+
+const readV2HistoryProject = (packagePath: string): EditorProjectV2 | null => {
+  const readCandidate = (candidatePath: string): EditorProjectV2 | null => {
+    try {
+      const value: unknown = JSON.parse(readFileSync(candidatePath, 'utf-8'));
+      return validateEditorProject(value).valid
+        ? (value as EditorProjectV2)
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const paths = getEditorV2ProjectPaths(packagePath);
+  const target = readCandidate(paths.project);
+  if (target) return target;
+  const candidates = [paths.projectTemporary, paths.projectBackup]
+    .map(readCandidate)
+    .filter((project): project is EditorProjectV2 => project !== null);
+  return (
+    candidates.sort((left, right) => right.revision - left.revision)[0] ?? null
+  );
+};
+
+const getHistoryThumbnailCacheIdentity = (item: HistoryItem): string => {
+  if (item.type !== 'video') return item.originalPath;
+  if (
+    item.projectLocation?.kind === 'capty-package' &&
+    item.projectLocation.format === 'v2'
+  ) {
+    return item.projectLocation.packagePath;
+  }
+  return getRecordingVideoPath(item.originalPath);
+};
+
+const getHistoryThumbnailSource = (
+  originalPath: string
+): HistoryThumbnailSource | null => {
+  const projectFolder = getProjectFolder(originalPath);
+  const recordingPath = getRecordingVideoPath(originalPath);
+  if (!projectFolder || existsSync(recordingPath)) {
+    return {
+      sourcePath: recordingPath,
+      type: 'video',
+      cacheIdentity: recordingPath,
+    };
+  }
+
+  const project = readV2HistoryProject(projectFolder);
+  if (!project) return null;
+  for (const trackId of project.sequence.videoTrackIds) {
+    const track = project.sequence.tracks[trackId];
+    if (!track || track.kind !== 'video') continue;
+    for (const clipId of track.clipIds) {
+      const clip = project.sequence.clips[clipId];
+      if (!clip || (clip.kind !== 'video' && clip.kind !== 'image')) continue;
+      const asset = project.assets[clip.assetId];
+      if (!asset) continue;
+      const sourcePath =
+        asset.locator.kind === 'linked'
+          ? asset.locator.absolutePath
+          : path.join(projectFolder, asset.locator.relativePath);
+      return {
+        sourcePath,
+        type: asset.kind === 'image' ? 'screenshot' : 'video',
+        cacheIdentity: projectFolder,
+      };
+    }
+  }
+  return null;
+};
 
 function ensureDirectories() {
   if (!existsSync(CONFIG_DIR)) {
@@ -53,10 +140,20 @@ export async function loadHistory(): Promise<HistoryItem[]> {
       historyItems = JSON.parse(fileContent);
       const validItems = await Promise.all(
         historyItems.map(async item => {
-          const exists = existsSync(item.originalPath);
-          return exists
-            ? { ...item, type: item.type || ('screenshot' as const) }
-            : null;
+          if (!existsSync(item.originalPath)) return null;
+
+          const normalized = {
+            ...item,
+            type: item.type || ('screenshot' as const),
+          };
+          if (normalized.type !== 'video') return normalized;
+
+          const location = await canonicalizeEditorProjectLocation(
+            normalized.originalPath
+          );
+          return location
+            ? migrateHistoryProjectIdentity(normalized, location)
+            : normalized;
         })
       );
       historyItems = validItems.filter(
@@ -97,13 +194,23 @@ export async function addToHistory(
   }
 
   try {
+    const projectLocation =
+      type === 'video'
+        ? await canonicalizeEditorProjectLocation(originalPath)
+        : null;
+    const identityPath = projectLocation
+      ? projectLocation.kind === 'capty-package'
+        ? projectLocation.packagePath
+        : projectLocation.sourcePath
+      : originalPath;
     const item: HistoryItem = {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
-      originalPath,
+      originalPath: identityPath,
       type,
       editorState: null,
       ...(duration !== undefined && { duration }),
+      ...(projectLocation && { projectLocation }),
     };
 
     historyItems.unshift(item);
@@ -145,8 +252,9 @@ export async function updateHistoryItemByPath(
   originalPath: string,
   editorState: EditorState
 ): Promise<HistoryItem | null> {
+  const identityPath = getEditorProjectIdentityPath(originalPath);
   const index = historyItems.findIndex(
-    item => item.originalPath === originalPath
+    item => getEditorProjectIdentityPath(item.originalPath) === identityPath
   );
   if (index === -1) {
     return null;
@@ -165,16 +273,30 @@ export async function updateHistoryItemPath(
   oldPath: string,
   newPath: string
 ): Promise<boolean> {
-  const index = historyItems.findIndex(item => item.originalPath === oldPath);
+  const oldIdentity = getEditorProjectIdentityPath(oldPath);
+  const newIdentity = getEditorProjectIdentityPath(newPath);
+  const index = historyItems.findIndex(
+    item => getEditorProjectIdentityPath(item.originalPath) === oldIdentity
+  );
   if (index === -1) {
     return false;
   }
 
-  historyItems[index] = {
-    ...historyItems[index],
-    originalPath: newPath,
-  };
+  const previousItem = historyItems[index];
+  const location = await canonicalizeEditorProjectLocation(newIdentity);
+  historyItems[index] = location
+    ? migrateHistoryProjectIdentity(previousItem, location)
+    : {
+        ...historyItems[index],
+        originalPath: newIdentity,
+      };
 
+  if (
+    previousItem.projectLocation?.kind === 'capty-package' &&
+    previousItem.projectLocation.format === 'v2'
+  ) {
+    rekeyThumbnail(oldIdentity, newIdentity);
+  }
   await saveHistoryToFile();
   return true;
 }
@@ -182,9 +304,10 @@ export async function updateHistoryItemPath(
 function cleanupHistoryItem(item: HistoryItem): void {
   try {
     const projectFolder = getProjectFolder(item.originalPath);
+    const thumbnailSource = getHistoryThumbnailCacheIdentity(item);
 
     if (projectFolder && existsSync(projectFolder)) {
-      deleteThumbnail(item.originalPath);
+      deleteThumbnail(thumbnailSource);
       rmSync(projectFolder, { recursive: true, force: true });
       return;
     }
@@ -192,7 +315,7 @@ function cleanupHistoryItem(item: HistoryItem): void {
     if (existsSync(item.originalPath)) {
       unlinkSync(item.originalPath);
     }
-    deleteThumbnail(item.originalPath);
+    deleteThumbnail(thumbnailSource);
     if (item.type === 'video') {
       const cursorDataPath = item.originalPath.replace(
         /\.[^.]+$/,
@@ -255,7 +378,12 @@ export function getHistoryItem(id: string): HistoryItem | null {
 }
 
 export function getHistoryItemByPath(originalPath: string): HistoryItem | null {
-  return historyItems.find(item => item.originalPath === originalPath) || null;
+  const identityPath = getEditorProjectIdentityPath(originalPath);
+  return (
+    historyItems.find(
+      item => getEditorProjectIdentityPath(item.originalPath) === identityPath
+    ) || null
+  );
 }
 
 export function getVideoRecordingFeatures(
@@ -326,7 +454,17 @@ export function init(): void {
       originalPath: string,
       type: 'screenshot' | 'video'
     ): Promise<string | null> => {
-      const result = await getThumbnail(originalPath, type);
+      if (type !== 'video') {
+        const result = await getThumbnail(originalPath, type);
+        return result.base64;
+      }
+      const thumbnail = getHistoryThumbnailSource(originalPath);
+      if (!thumbnail) return null;
+      const result = await getThumbnail(
+        thumbnail.sourcePath,
+        thumbnail.type,
+        thumbnail.cacheIdentity
+      );
       return result.base64;
     }
   );

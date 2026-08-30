@@ -8,6 +8,17 @@ import {
   findDocumentInvariantViolations,
   type DocumentInvariantViolation,
 } from './invariants';
+import {
+  isAssetStructure,
+  isClipStructure,
+  isImportProvenance,
+  isPreRoll,
+  isRecord,
+  isSequenceEffect,
+  isStringArray,
+  isTrackStructure,
+  isTransitionStructure,
+} from './structure';
 
 export type EditorProjectValidationResult =
   | { valid: true; project: EditorProjectV2 }
@@ -19,75 +30,11 @@ export type EditorProjectValidationResult =
       >;
     };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every(entry => typeof entry === 'string');
-
 const isRecordDictionary = (
   value: Record<string, unknown>,
   predicate: (entry: Record<string, unknown>) => boolean
 ): boolean =>
   Object.values(value).every(entry => isRecord(entry) && predicate(entry));
-
-const isAssetStructure = (value: Record<string, unknown>): boolean =>
-  typeof value.id === 'string' &&
-  typeof value.name === 'string' &&
-  typeof value.kind === 'string' &&
-  isRecord(value.locator);
-
-const isTrackStructure = (value: Record<string, unknown>): boolean =>
-  typeof value.id === 'string' &&
-  (value.kind === 'video' || value.kind === 'audio') &&
-  isStringArray(value.clipIds);
-
-const isClipStructure = (value: Record<string, unknown>): boolean =>
-  typeof value.id === 'string' &&
-  typeof value.trackId === 'string' &&
-  typeof value.assetId === 'string' &&
-  (value.kind === 'video' ||
-    value.kind === 'image' ||
-    value.kind === 'audio') &&
-  typeof value.timelineStart === 'number' &&
-  typeof value.timelineDuration === 'number' &&
-  typeof value.sourceStart === 'number' &&
-  typeof value.sourceDuration === 'number' &&
-  isRecord(value.playbackRate) &&
-  typeof value.playbackRate.numerator === 'number' &&
-  typeof value.playbackRate.denominator === 'number' &&
-  Array.isArray(value.effects);
-
-const isTransitionStructure = (value: Record<string, unknown>): boolean => {
-  if (
-    typeof value.id !== 'string' ||
-    typeof value.trackId !== 'string' ||
-    typeof value.durationTicks !== 'number'
-  ) {
-    return false;
-  }
-
-  if (value.type === 'video-fade-black') {
-    return (
-      typeof value.clipId === 'string' &&
-      (value.edge === 'in' || value.edge === 'out')
-    );
-  }
-
-  if (
-    value.type !== 'video-cross-dissolve' &&
-    value.type !== 'audio-crossfade'
-  ) {
-    return false;
-  }
-
-  return (
-    typeof value.fromClipId === 'string' &&
-    typeof value.toClipId === 'string' &&
-    typeof value.cutTick === 'number' &&
-    value.alignment === 'center'
-  );
-};
 
 const invalidDocument = (
   path: string,
@@ -161,7 +108,12 @@ export const validateEditorProject = (
     !isRecordDictionary(value.sequence.clips, isClipStructure) ||
     !isRecord(value.sequence.transitions) ||
     !isRecordDictionary(value.sequence.transitions, isTransitionStructure) ||
-    !Array.isArray(value.sequence.effects)
+    !Array.isArray(value.sequence.effects) ||
+    !value.sequence.effects.every(isSequenceEffect) ||
+    (value.sequence.preRoll !== undefined &&
+      !isPreRoll(value.sequence.preRoll)) ||
+    (value.importedFromV1 !== undefined &&
+      !isImportProvenance(value.importedFromV1))
   ) {
     return invalidDocument('sequence', 'Project sequence structure is invalid');
   }
