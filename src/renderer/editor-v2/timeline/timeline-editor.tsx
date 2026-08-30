@@ -5,7 +5,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { createCommandRegistry } from '../commands/command-registry';
+import {
+  createCommandRegistry,
+  type RuntimeCommandHandler,
+  type RuntimeEditorCommand,
+} from '../commands/command-registry';
 import { useEditorKeybindings } from '../store/use-editor-keybindings';
 import { useEditorStore } from '../store/use-editor-store';
 import {
@@ -56,6 +60,15 @@ interface TimelineEditorProps {
   ) => void;
   onWorkspaceCommit: () => void;
   onCollapse: () => void;
+  onCommandRegistryChange?: (
+    commands: readonly RuntimeEditorCommand[] | null
+  ) => void;
+}
+
+interface PendingDeletionFocus {
+  kind: 'clip' | 'track';
+  index: number;
+  targetId?: string;
 }
 
 interface GestureState {
@@ -151,9 +164,12 @@ export default function TimelineEditor({
   onWorkspaceChange,
   onWorkspaceCommit,
   onCollapse,
+  onCommandRegistryChange,
 }: TimelineEditorProps) {
   const store = useEditorStore();
+  const rootRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingDeletionFocusRef = useRef<PendingDeletionFocus | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const preferredTrackIdRef = useRef<string | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
@@ -173,10 +189,23 @@ export default function TimelineEditor({
   const pixelsPerTick =
     workspace.timeline.zoom / store.document.timebase.ticksPerSecond;
   const timelineWidth = Math.max(1, duration * pixelsPerTick);
-  const orderedTrackIds = [
-    ...store.document.sequence.videoTrackIds,
-    ...store.document.sequence.audioTrackIds,
-  ];
+  const orderedTrackIds = useMemo(
+    () => [
+      ...store.document.sequence.videoTrackIds,
+      ...store.document.sequence.audioTrackIds,
+    ],
+    [
+      store.document.sequence.audioTrackIds,
+      store.document.sequence.videoTrackIds,
+    ]
+  );
+  const orderedClipIds = useMemo(
+    () =>
+      orderedTrackIds.flatMap(
+        trackId => store.document.sequence.tracks[trackId].clipIds
+      ),
+    [orderedTrackIds, store.document.sequence.tracks]
+  );
   const clipIds = selectedClipIds(store.selection);
   const frameTicks = ticksForFrames(
     1,
@@ -300,6 +329,48 @@ export default function TimelineEditor({
     [store]
   );
 
+  useEffect(() => {
+    const pending = pendingDeletionFocusRef.current;
+    if (!pending) return;
+    const ids = pending.kind === 'clip' ? orderedClipIds : orderedTrackIds;
+    const targetId =
+      pending.targetId ?? ids[Math.min(pending.index, ids.length - 1)];
+    if (!targetId) {
+      pendingDeletionFocusRef.current = null;
+      rootRef.current?.focus();
+      return;
+    }
+    const selectionMatches =
+      pending.kind === 'clip'
+        ? store.selection.kind === 'clips' &&
+          store.selection.primaryClipId === targetId
+        : store.selection.kind === 'track' &&
+          store.selection.trackId === targetId;
+    if (!selectionMatches) {
+      pendingDeletionFocusRef.current = { ...pending, targetId };
+      store.setSelection(
+        pending.kind === 'clip'
+          ? { kind: 'clips', clipIds: [targetId], primaryClipId: targetId }
+          : { kind: 'track', trackId: targetId }
+      );
+      return;
+    }
+    const attribute =
+      pending.kind === 'clip'
+        ? 'data-timeline-clip-id'
+        : 'data-timeline-track-id';
+    const target = [
+      ...(rootRef.current?.querySelectorAll<HTMLElement>(`[${attribute}]`) ??
+        []),
+    ].find(element =>
+      pending.kind === 'clip'
+        ? element.dataset.timelineClipId === targetId
+        : element.dataset.timelineTrackId === targetId
+    );
+    pendingDeletionFocusRef.current = null;
+    (target ?? rootRef.current)?.focus();
+  }, [orderedClipIds, orderedTrackIds, store]);
+
   const setZoom = useCallback(
     (zoom: number) => {
       onWorkspaceChange(current => ({
@@ -351,21 +422,36 @@ export default function TimelineEditor({
       return;
     }
     if (store.selection.kind === 'track') {
-      run(
+      const index = orderedTrackIds.indexOf(store.selection.trackId);
+      const succeeded = run(
         createDeleteTrackCommand(store.selection.trackId),
         'The selected track or one of its linked sibling tracks is locked'
       );
+      if (succeeded) pendingDeletionFocusRef.current = { kind: 'track', index };
       return;
     }
     if (clipIds.length === 0) return;
-    run(
+    const primaryClipId =
+      store.selection.kind === 'clips'
+        ? store.selection.primaryClipId
+        : clipIds[0];
+    const index = orderedClipIds.indexOf(primaryClipId);
+    const succeeded = run(
       createDeleteClipsCommand({
         clipIds,
         ripple: workspace.rippleEnabled,
       }),
       'The selected clips could not be deleted'
     );
-  }, [clipIds, run, store.selection, workspace.rippleEnabled]);
+    if (succeeded) pendingDeletionFocusRef.current = { kind: 'clip', index };
+  }, [
+    clipIds,
+    orderedClipIds,
+    orderedTrackIds,
+    run,
+    store.selection,
+    workspace.rippleEnabled,
+  ]);
 
   const splitSelection = useCallback(() => {
     if (clipIds.length === 0) return;
@@ -445,122 +531,155 @@ export default function TimelineEditor({
     [clipIds, frameTicks, run]
   );
 
-  const registry = useMemo(
-    () =>
-      createCommandRegistry({
-        'edit.undo': {
-          execute: () => {
-            store.undo();
-          },
-          isAvailable: () => store.canUndo,
+  const commandHandlers = useMemo<
+    Readonly<Record<string, RuntimeCommandHandler | undefined>>
+  >(
+    () => ({
+      'edit.undo': {
+        execute: () => {
+          store.undo();
         },
-        'edit.redo': {
-          execute: () => {
-            store.redo();
-          },
-          isAvailable: () => store.canRedo,
+        isAvailable: () => store.canUndo,
+      },
+      'edit.redo': {
+        execute: () => {
+          store.redo();
         },
-        'edit.select-all-clips': {
-          execute: selectAllClips,
-          isAvailable: () =>
-            Object.keys(store.document.sequence.clips).length > 0,
+        isAvailable: () => store.canRedo,
+      },
+      'edit.select-all-clips': {
+        execute: selectAllClips,
+        isAvailable: () =>
+          Object.keys(store.document.sequence.clips).length > 0,
+      },
+      'edit.clear-selection': {
+        execute: () => {
+          if (gestureRef.current) {
+            gestureRef.current = null;
+            stopAutoScroll();
+            store.cancelTransaction();
+            setSnapGuide(null);
+            return;
+          }
+          store.setSelection({ kind: 'none' });
         },
-        'edit.clear-selection': {
-          execute: () => {
-            if (gestureRef.current) {
-              gestureRef.current = null;
-              stopAutoScroll();
-              store.cancelTransaction();
-              setSnapGuide(null);
-              return;
-            }
-            store.setSelection({ kind: 'none' });
-          },
-          isAvailable: () =>
-            store.selection.kind !== 'none' || Boolean(gestureRef.current),
+        isAvailable: () =>
+          store.selection.kind !== 'none' || Boolean(gestureRef.current),
+      },
+      'edit.delete-selection': {
+        execute: deleteSelection,
+        isAvailable: () => store.selection.kind !== 'none',
+      },
+      'edit.split-at-playhead': {
+        execute: splitSelection,
+        isAvailable: () => clipIds.length > 0,
+      },
+      'edit.toggle-snapping': {
+        execute: () => {
+          onWorkspaceChange(current => ({
+            ...current,
+            snappingEnabled: !current.snappingEnabled,
+          }));
+          onWorkspaceCommit();
         },
-        'edit.delete-selection': {
-          execute: deleteSelection,
-          isAvailable: () => store.selection.kind !== 'none',
+        isAvailable: () => true,
+      },
+      'edit.toggle-ripple': {
+        execute: () => {
+          onWorkspaceChange(current => ({
+            ...current,
+            rippleEnabled: !current.rippleEnabled,
+          }));
+          onWorkspaceCommit();
         },
-        'edit.split-at-playhead': {
-          execute: splitSelection,
-          isAvailable: () => clipIds.length > 0,
+        isAvailable: () => true,
+      },
+      'playback.toggle-scrub-audio': {
+        execute: () => {
+          onWorkspaceChange(current => ({
+            ...current,
+            scrubAudioEnabled: !current.scrubAudioEnabled,
+          }));
+          onWorkspaceCommit();
         },
-        'edit.toggle-snapping': {
-          execute: () => {
-            onWorkspaceChange(current => ({
-              ...current,
-              snappingEnabled: !current.snappingEnabled,
-            }));
-            onWorkspaceCommit();
-          },
-          isAvailable: () => true,
+        isAvailable: () => true,
+      },
+      'timeline.zoom-in': {
+        execute: () => setZoom(workspace.timeline.zoom * 1.25),
+        isAvailable: () => workspace.timeline.zoom < MAXIMUM_ZOOM,
+      },
+      'timeline.zoom-out': {
+        execute: () => setZoom(workspace.timeline.zoom / 1.25),
+        isAvailable: () => workspace.timeline.zoom > MINIMUM_ZOOM,
+      },
+      'timeline.zoom-reset': {
+        execute: () => setZoom(100),
+        isAvailable: () => workspace.timeline.zoom !== 100,
+      },
+      'timeline.zoom-fit': { execute: fitTimeline, isAvailable: () => true },
+      'track.add-video': {
+        execute: () => addTrack('video'),
+        isAvailable: () => true,
+      },
+      'track.add-audio': {
+        execute: () => addTrack('audio'),
+        isAvailable: () => true,
+      },
+      'clip.move-track-up': {
+        execute: () => {
+          run(
+            createMoveClipsToAdjacentTrackCommand(clipIds, -1),
+            'The selected clips cannot move to the track above'
+          );
         },
-        'edit.toggle-ripple': {
-          execute: () => {
-            onWorkspaceChange(current => ({
-              ...current,
-              rippleEnabled: !current.rippleEnabled,
-            }));
-            onWorkspaceCommit();
-          },
-          isAvailable: () => true,
+        isAvailable: () => clipIds.length > 0,
+      },
+      'clip.move-track-down': {
+        execute: () => {
+          run(
+            createMoveClipsToAdjacentTrackCommand(clipIds, 1),
+            'The selected clips cannot move to the track below'
+          );
         },
-        'playback.toggle-scrub-audio': {
-          execute: () => {
-            onWorkspaceChange(current => ({
-              ...current,
-              scrubAudioEnabled: !current.scrubAudioEnabled,
-            }));
-            onWorkspaceCommit();
-          },
-          isAvailable: () => true,
+        isAvailable: () => clipIds.length > 0,
+      },
+      'clip.nudge-left': {
+        execute: () => nudge(-1),
+        isAvailable: () => clipIds.length > 0,
+      },
+      'clip.nudge-right': {
+        execute: () => nudge(1),
+        isAvailable: () => clipIds.length > 0,
+      },
+      'track.toggle-lock': {
+        execute: () => {
+          if (store.selection.kind !== 'track') return;
+          const track = store.document.sequence.tracks[store.selection.trackId];
+          if (!track) return;
+          run(
+            createUpdateTrackCommand(track.id, { locked: !track.locked }),
+            'The selected track lock could not be changed'
+          );
         },
-        'timeline.zoom-in': {
-          execute: () => setZoom(workspace.timeline.zoom * 1.25),
-          isAvailable: () => workspace.timeline.zoom < MAXIMUM_ZOOM,
+        isAvailable: () => store.selection.kind === 'track',
+      },
+      'track.toggle-output': {
+        execute: () => {
+          if (store.selection.kind !== 'track') return;
+          const track = store.document.sequence.tracks[store.selection.trackId];
+          if (!track) return;
+          const update =
+            track.kind === 'video'
+              ? { visible: !track.visible }
+              : { muted: !track.muted };
+          run(
+            createUpdateTrackCommand(track.id, update),
+            'The selected track output could not be changed'
+          );
         },
-        'timeline.zoom-out': {
-          execute: () => setZoom(workspace.timeline.zoom / 1.25),
-          isAvailable: () => workspace.timeline.zoom > MINIMUM_ZOOM,
-        },
-        'timeline.zoom-fit': { execute: fitTimeline, isAvailable: () => true },
-        'track.add-video': {
-          execute: () => addTrack('video'),
-          isAvailable: () => true,
-        },
-        'track.add-audio': {
-          execute: () => addTrack('audio'),
-          isAvailable: () => true,
-        },
-        'clip.move-track-up': {
-          execute: () => {
-            run(
-              createMoveClipsToAdjacentTrackCommand(clipIds, -1),
-              'The selected clips cannot move to the track above'
-            );
-          },
-          isAvailable: () => clipIds.length > 0,
-        },
-        'clip.move-track-down': {
-          execute: () => {
-            run(
-              createMoveClipsToAdjacentTrackCommand(clipIds, 1),
-              'The selected clips cannot move to the track below'
-            );
-          },
-          isAvailable: () => clipIds.length > 0,
-        },
-        'clip.nudge-left': {
-          execute: () => nudge(-1),
-          isAvailable: () => clipIds.length > 0,
-        },
-        'clip.nudge-right': {
-          execute: () => nudge(1),
-          isAvailable: () => clipIds.length > 0,
-        },
-      }),
+        isAvailable: () => store.selection.kind === 'track',
+      },
+    }),
     [
       addTrack,
       clipIds,
@@ -578,6 +697,14 @@ export default function TimelineEditor({
       workspace.timeline.zoom,
     ]
   );
+  const registry = useMemo(
+    () => createCommandRegistry(commandHandlers),
+    [commandHandlers]
+  );
+  useEffect(() => {
+    onCommandRegistryChange?.(registry);
+    return () => onCommandRegistryChange?.(null);
+  }, [onCommandRegistryChange, registry]);
   const onKeyDown = useEditorKeybindings(registry, commandBindings);
 
   const beginGesture = useCallback(
@@ -825,15 +952,17 @@ export default function TimelineEditor({
 
   return (
     <section
+      ref={rootRef}
       aria-label="Timeline"
       tabIndex={0}
-      className="bg-card flex h-full flex-col outline-none"
+      className="bg-card focus-visible:ring-primary flex h-full flex-col outline-none focus-visible:ring-2 focus-visible:ring-inset"
       onKeyDown={onKeyDown}
       onPointerMove={updateGesture}
       onPointerUp={event => finishGesture(event, false)}
       onPointerCancel={event => finishGesture(event, true)}
     >
       <TimelineToolbar
+        commandBindings={commandBindings}
         canPlace={Boolean(placementAssetId)}
         canEditClips={clipIds.length > 0}
         hasSelection={store.selection.kind !== 'none'}
@@ -880,6 +1009,7 @@ export default function TimelineEditor({
         projectToken={projectToken}
         project={store.document}
         selection={store.selection}
+        commandBindings={commandBindings}
         orderedTrackIds={orderedTrackIds}
         selectedClipIds={clipIds}
         statuses={statuses}

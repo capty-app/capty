@@ -2,9 +2,13 @@ import React from 'react';
 import { Film, Sparkles } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
+import { getCommandTooltip } from '@/renderer/editor-v2/commands/command-display';
 import EffectsBrowser from '@/renderer/editor-v2/effects/effects-browser';
 import ProjectBrowser from '@/renderer/editor-v2/media/project-browser';
-import type { EditorV2Workspace } from '@/types/editor-v2';
+import type {
+  EditorV2Workspace,
+  SerializedCommandBinding,
+} from '@/types/editor-v2';
 
 interface BrowserDockProps {
   activeTab: EditorV2Workspace['browserTab'];
@@ -12,6 +16,7 @@ interface BrowserDockProps {
   onRemoveManaged: (assetId: string) => Promise<void>;
   onMediaOperationStart: () => (() => void) | null;
   operationsFrozen: boolean;
+  commandBindings: readonly SerializedCommandBinding[];
   onTabChange: (tab: EditorV2Workspace['browserTab']) => void;
   onCollapse: () => void;
 }
@@ -22,6 +27,7 @@ export default function BrowserDock({
   onRemoveManaged,
   onMediaOperationStart,
   operationsFrozen,
+  commandBindings,
   onTabChange,
   onCollapse,
 }: BrowserDockProps) {
@@ -65,6 +71,7 @@ export default function BrowserDock({
           variant="ghost"
           size="sm"
           className="h-7 w-full"
+          title={getCommandTooltip('workspace.toggle-browser', commandBindings)}
           onClick={onCollapse}
         >
           Collapse browser

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import ShortcutInput from './shortcut-input';
 import CaptyCloudAccess from './capty-cloud-access';
+import EditorCommandShortcutInput from './editor-command-shortcut-input';
 import type { SettingsItem } from './settings-registry';
 import type { SettingsConfig, StorageConfig } from '@/types/settings';
 import { DEFAULT_STORAGE_CONFIG } from '@/types/settings';
@@ -523,6 +524,15 @@ export default function SettingItemRenderer({
           value={item.getValue(settings)}
           onChange={v => onUpdate(item.setValue(settings, v))}
           singleKey={item.singleKey}
+        />
+      );
+
+    case 'editor-command-shortcut':
+      return (
+        <EditorCommandShortcutInput
+          commandId={item.commandId}
+          settings={settings}
+          onUpdate={onUpdate}
         />
       );
 

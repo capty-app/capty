@@ -18,6 +18,7 @@ import {
 
 import { ticksForFrames } from '@/editor-v2/time/timebase';
 import { buildCompleteAudioTimelinePlan } from '@/editor-v2/timeline/audio-plan';
+import { getPreRollDuration } from '@/editor-v2/timeline/pre-roll';
 import {
   evaluateSequence,
   getSequenceOutputDuration,
@@ -26,10 +27,19 @@ import { Button } from '@/renderer/components/ui/button';
 import { EditorV2CompositionEngine } from '../composition/composition-engine';
 import { createLegacyCaptyEffectAdapter } from '../composition/legacy-capty-effect-adapter';
 import { BrowserCompositionSourceProvider } from '../composition/source-provider';
+import { getCommandTooltip } from '../commands/command-display';
+import {
+  createCommandRegistry,
+  type RuntimeEditorCommand,
+} from '../commands/command-registry';
 import { EditorV2AudioScheduler } from './audio-scheduler';
 import DirectManipulationOverlay from './direct-manipulation-overlay';
 import { formatViewerTimecode } from './timecode';
-import type { EditableDataLocator, EditorProjectV2 } from '@/types/editor-v2';
+import type {
+  EditableDataLocator,
+  EditorProjectV2,
+  SerializedCommandBinding,
+} from '@/types/editor-v2';
 
 interface EditorV2ViewerProps {
   projectToken: string;
@@ -38,6 +48,10 @@ interface EditorV2ViewerProps {
   onCurrentTickChange?: (tick: number) => void;
   directManipulation?: boolean;
   scrubAudioEnabled?: boolean;
+  commandBindings?: readonly SerializedCommandBinding[];
+  onCommandRegistryChange?: (
+    commands: readonly RuntimeEditorCommand[] | null
+  ) => void;
   onScrubAudioHandlerChange?: (
     handler: ((tick: number) => void) | null
   ) => void;
@@ -58,6 +72,8 @@ export default function EditorV2Viewer({
   onCurrentTickChange,
   directManipulation = false,
   scrubAudioEnabled = false,
+  commandBindings = [],
+  onCommandRegistryChange,
   onScrubAudioHandlerChange,
 }: EditorV2ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -269,8 +285,9 @@ export default function EditorV2Viewer({
       setPlaying(false);
       return;
     }
-    const startTick = currentTick >= duration ? 0 : currentTick;
-    if (startTick !== currentTick) setCurrentTick(startTick);
+    const tick = currentTickRef.current;
+    const startTick = tick >= duration ? 0 : tick;
+    if (startTick !== tick) setCurrentTick(startTick);
     setAudioError(null);
     setPreparingAudio(true);
     void (async () => {
@@ -294,7 +311,6 @@ export default function EditorV2Viewer({
     })();
   }, [
     audioScheduler,
-    currentTick,
     duration,
     getAudioPlan,
     playing,
@@ -347,6 +363,114 @@ export default function EditorV2Viewer({
     },
     [audioScheduler, duration, frameTicks, setCurrentTick]
   );
+  const editTicks = useMemo(() => {
+    const preRollTicks = getPreRollDuration(project);
+    return [
+      0,
+      duration,
+      ...Object.values(project.sequence.clips).flatMap(clip => [
+        preRollTicks + clip.timelineStart,
+        preRollTicks + clip.timelineStart + clip.timelineDuration,
+      ]),
+    ].sort((left, right) => left - right);
+  }, [duration, project]);
+  const seekEdit = useCallback(
+    (direction: -1 | 1) => {
+      const tick = currentTickRef.current;
+      const target =
+        direction < 0
+          ? [...editTicks].reverse().find(candidate => candidate < tick)
+          : editTicks.find(candidate => candidate > tick);
+      scrubAt(target ?? (direction < 0 ? 0 : duration));
+    },
+    [duration, editTicks, scrubAt]
+  );
+  const commandRegistry = useMemo(
+    () =>
+      createCommandRegistry({
+        'playback.toggle': {
+          execute: togglePlayback,
+          isAvailable: () => duration > 0 && !preparingAudio,
+        },
+        'playback.previous-frame': {
+          execute: () => step(-1),
+          isAvailable: () => currentTickRef.current > 0,
+        },
+        'playback.next-frame': {
+          execute: () => step(1),
+          isAvailable: () => currentTickRef.current < duration,
+        },
+        'playback.sequence-start': {
+          execute: () => scrubAt(0),
+          isAvailable: () => currentTickRef.current > 0,
+        },
+        'playback.sequence-end': {
+          execute: () => scrubAt(duration),
+          isAvailable: () => currentTickRef.current < duration,
+        },
+        'playback.previous-edit': {
+          execute: () => seekEdit(-1),
+          isAvailable: () => currentTickRef.current > 0,
+        },
+        'playback.next-edit': {
+          execute: () => seekEdit(1),
+          isAvailable: () => currentTickRef.current < duration,
+        },
+        'playback.seek-backward-short': {
+          execute: () =>
+            scrubAt(
+              Math.max(
+                0,
+                currentTickRef.current - project.timebase.ticksPerSecond
+              )
+            ),
+          isAvailable: () => currentTickRef.current > 0,
+        },
+        'playback.seek-forward-short': {
+          execute: () =>
+            scrubAt(
+              Math.min(
+                duration,
+                currentTickRef.current + project.timebase.ticksPerSecond
+              )
+            ),
+          isAvailable: () => currentTickRef.current < duration,
+        },
+        'playback.seek-backward-long': {
+          execute: () =>
+            scrubAt(
+              Math.max(
+                0,
+                currentTickRef.current - project.timebase.ticksPerSecond * 5
+              )
+            ),
+          isAvailable: () => currentTickRef.current > 0,
+        },
+        'playback.seek-forward-long': {
+          execute: () =>
+            scrubAt(
+              Math.min(
+                duration,
+                currentTickRef.current + project.timebase.ticksPerSecond * 5
+              )
+            ),
+          isAvailable: () => currentTickRef.current < duration,
+        },
+      }),
+    [
+      duration,
+      preparingAudio,
+      project.timebase.ticksPerSecond,
+      scrubAt,
+      seekEdit,
+      step,
+      togglePlayback,
+    ]
+  );
+  useEffect(() => {
+    onCommandRegistryChange?.(commandRegistry);
+    return () => onCommandRegistryChange?.(null);
+  }, [commandRegistry, onCommandRegistryChange]);
 
   return (
     <main
@@ -394,10 +518,18 @@ export default function EditorV2Viewer({
         ) : null}
         {status.kind !== 'ready' ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center">
-            <div className="rounded-md bg-black/70 px-4 py-3 text-white shadow-lg">
+            <div
+              role={
+                status.kind === 'missing-source' ||
+                status.kind === 'decode-error'
+                  ? 'alert'
+                  : undefined
+              }
+              className="rounded-md bg-black/70 px-4 py-3 text-white shadow-lg"
+            >
               {status.kind === 'loading' ? (
                 <>
-                  <LoaderCircle className="mx-auto size-5 animate-spin" />
+                  <LoaderCircle className="mx-auto size-5 animate-spin motion-reduce:animate-none" />
                   <span className="sr-only">Loading frame</span>
                 </>
               ) : status.kind === 'missing-source' ? (
@@ -457,6 +589,10 @@ export default function EditorV2Viewer({
               size="icon"
               className="size-7"
               aria-label="Previous frame"
+              title={getCommandTooltip(
+                'playback.previous-frame',
+                commandBindings
+              )}
               disabled={currentTick === 0}
               onClick={() => step(-1)}
             >
@@ -470,10 +606,11 @@ export default function EditorV2Viewer({
                 preparingAudio ? 'Preparing audio' : playing ? 'Pause' : 'Play'
               }
               disabled={duration === 0 || preparingAudio}
+              title={getCommandTooltip('playback.toggle', commandBindings)}
               onClick={togglePlayback}
             >
               {preparingAudio ? (
-                <LoaderCircle className="size-4 animate-spin" />
+                <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
               ) : playing ? (
                 <Pause className="size-4 fill-current" />
               ) : (
@@ -485,6 +622,7 @@ export default function EditorV2Viewer({
               size="icon"
               className="size-7"
               aria-label="Next frame"
+              title={getCommandTooltip('playback.next-frame', commandBindings)}
               disabled={currentTick >= duration}
               onClick={() => step(1)}
             >

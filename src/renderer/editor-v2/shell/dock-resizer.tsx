@@ -49,18 +49,27 @@ export default function DockResizer({
       const isDecrease = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
       const isIncrease =
         event.key === 'ArrowRight' || event.key === 'ArrowDown';
-      if (!isDecrease && !isIncrease) return;
+      const isMinimum = event.key === 'Home';
+      const isMaximum = event.key === 'End';
+      if (!isDecrease && !isIncrease && !isMinimum && !isMaximum) return;
       event.preventDefault();
-      onResize(isDecrease ? -16 : 16);
+      const delta = isMinimum
+        ? minimum - value
+        : isMaximum
+          ? maximum - value
+          : isDecrease
+            ? -16
+            : 16;
+      onResize(delta);
       onResizeEnd();
     },
-    [onResize, onResizeEnd]
+    [maximum, minimum, onResize, onResizeEnd, value]
   );
 
   const className =
     orientation === 'horizontal'
-      ? 'group bg-border hover:bg-primary focus-visible:bg-primary relative w-px shrink-0 cursor-col-resize outline-none'
-      : 'group bg-border hover:bg-primary focus-visible:bg-primary relative h-px shrink-0 cursor-row-resize outline-none';
+      ? 'group bg-border hover:bg-primary focus-visible:bg-primary focus-visible:ring-primary relative w-px shrink-0 cursor-col-resize outline-none focus-visible:ring-2'
+      : 'group bg-border hover:bg-primary focus-visible:bg-primary focus-visible:ring-primary relative h-px shrink-0 cursor-row-resize outline-none focus-visible:ring-2';
 
   return (
     <div
@@ -72,6 +81,7 @@ export default function DockResizer({
       aria-valuenow={value}
       aria-valuemin={minimum}
       aria-valuemax={maximum}
+      aria-valuetext={`${value} pixels`}
       tabIndex={0}
       className={className}
       onPointerDown={handlePointerDown}

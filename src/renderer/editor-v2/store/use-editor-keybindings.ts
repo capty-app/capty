@@ -26,16 +26,22 @@ export const useEditorKeybindings = (
   );
   return useCallback(
     event => {
+      if (event.defaultPrevented) return;
+      const chord = eventChord(event);
+      if (!chord) return;
       const target = event.target;
-      if (
+      const isEditing =
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isEditing && chord !== 'F6') return;
+      if (
+        target instanceof HTMLButtonElement &&
+        (chord === 'Space' || chord === 'Enter')
       ) {
         return;
       }
-      const chord = eventChord(event);
-      if (!chord) return;
       const command = commands.find(candidate => {
         const configuredChord = activeBindings.get(candidate.id);
         const binding = activeBindings.has(candidate.id)

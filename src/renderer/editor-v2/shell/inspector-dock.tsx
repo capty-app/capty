@@ -2,15 +2,19 @@ import React from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
+import { getCommandTooltip } from '@/renderer/editor-v2/commands/command-display';
 import SelectionInspector from '@/renderer/editor-v2/inspector/selection-inspector';
+import type { SerializedCommandBinding } from '@/types/editor-v2';
 
 interface InspectorDockProps {
   projectToken: string;
+  commandBindings: readonly SerializedCommandBinding[];
   onCollapse: () => void;
 }
 
 export default function InspectorDock({
   projectToken,
+  commandBindings,
   onCollapse,
 }: InspectorDockProps) {
   return (
@@ -27,6 +31,10 @@ export default function InspectorDock({
           variant="ghost"
           size="sm"
           className="h-7 w-full"
+          title={getCommandTooltip(
+            'workspace.toggle-inspector',
+            commandBindings
+          )}
           onClick={onCollapse}
         >
           Collapse inspector

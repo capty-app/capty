@@ -1,5 +1,36 @@
+import { EDITOR_COMMAND_CATALOG } from '@/editor-v2/commands/catalog';
 import { DEFAULT_UPLOAD_TO_CLOUD_SHORTCUT } from '@/types/settings';
+import type { EditorCommandCategory } from '@/types/editor-v2';
 import type { SettingsItem } from '../settings-registry';
+
+const EDITOR_COMMAND_SECTIONS: Record<EditorCommandCategory, string> = {
+  project: 'Editor V2 Project',
+  edit: 'Editor V2 Edit',
+  'tools-effects': 'Editor V2 Tools and Effects',
+  playback: 'Editor V2 Playback',
+  'timeline-tracks': 'Editor V2 Timeline and Tracks',
+  'workspace-focus': 'Editor V2 Workspace and Focus',
+};
+
+const EDITOR_V2_SHORTCUT_ITEMS: SettingsItem[] = EDITOR_COMMAND_CATALOG.map(
+  command => ({
+    id: `shortcuts.editorV2.${command.id}`,
+    category: 'shortcuts',
+    section: EDITOR_COMMAND_SECTIONS[command.category],
+    type: 'editor-command-shortcut',
+    commandId: command.id,
+    label: command.label,
+    description: command.description,
+    keywords: [
+      'shortcut',
+      'video',
+      'editor',
+      'v2',
+      command.category,
+      command.id,
+    ],
+  })
+);
 
 export const SHORTCUTS_ITEMS: SettingsItem[] = [
   {
@@ -587,4 +618,5 @@ export const SHORTCUTS_ITEMS: SettingsItem[] = [
       },
     }),
   },
+  ...EDITOR_V2_SHORTCUT_ITEMS,
 ];

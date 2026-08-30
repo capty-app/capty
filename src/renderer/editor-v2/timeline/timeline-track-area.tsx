@@ -13,12 +13,14 @@ import type {
   EditorSelection,
   EditorV2DataValue,
   MediaAssetStatus,
+  SerializedCommandBinding,
 } from '@/types/editor-v2';
 
 interface TimelineTrackAreaProps {
   projectToken: string;
   project: EditorProjectV2;
   selection: EditorSelection;
+  commandBindings: readonly SerializedCommandBinding[];
   orderedTrackIds: string[];
   selectedClipIds: string[];
   statuses: Record<string, MediaAssetStatus>;
@@ -172,6 +174,7 @@ export default function TimelineTrackArea({
   projectToken,
   project,
   selection,
+  commandBindings,
   orderedTrackIds,
   selectedClipIds,
   statuses,
@@ -284,6 +287,57 @@ export default function TimelineTrackArea({
       return next;
     });
   };
+  const orderedClipIds = orderedTrackIds.flatMap(
+    trackId => project.sequence.tracks[trackId].clipIds
+  );
+  const rovingClipId =
+    selection.kind === 'clips' &&
+    orderedClipIds.includes(selection.primaryClipId)
+      ? selection.primaryClipId
+      : orderedClipIds[0];
+  const rovingTrackId =
+    selection.kind === 'track' && orderedTrackIds.includes(selection.trackId)
+      ? selection.trackId
+      : orderedTrackIds[0];
+  const navigateClip = (
+    clipId: string,
+    direction: -1 | 1 | 'first' | 'last'
+  ) => {
+    const currentIndex = orderedClipIds.indexOf(clipId);
+    const targetIndex =
+      direction === 'first'
+        ? 0
+        : direction === 'last'
+          ? orderedClipIds.length - 1
+          : Math.min(
+              orderedClipIds.length - 1,
+              Math.max(0, currentIndex + direction)
+            );
+    const targetId = orderedClipIds[targetIndex];
+    if (!targetId) return;
+    onClipSelect(targetId, false);
+    const targets = scrollRef.current?.querySelectorAll<HTMLElement>(
+      '[data-timeline-clip-id]'
+    );
+    [...(targets ?? [])]
+      .find(element => element.dataset.timelineClipId === targetId)
+      ?.focus();
+  };
+  const navigateTrack = (trackId: string, direction: -1 | 1) => {
+    const currentIndex = orderedTrackIds.indexOf(trackId);
+    const targetId =
+      orderedTrackIds[
+        Math.min(
+          orderedTrackIds.length - 1,
+          Math.max(0, currentIndex + direction)
+        )
+      ];
+    if (!targetId) return;
+    onTrackSelect(targetId);
+    [...document.querySelectorAll<HTMLElement>('[data-timeline-track-id]')]
+      .find(element => element.dataset.timelineTrackId === targetId)
+      ?.focus();
+  };
   return (
     <div className="flex min-h-0 flex-1">
       <div className="shrink-0" style={{ width: TRACK_HEADER_WIDTH }}>
@@ -312,9 +366,15 @@ export default function TimelineTrackArea({
             <div key={trackId}>
               <TrackHeader
                 track={track}
+                tabIndex={trackId === rovingTrackId ? 0 : -1}
+                selected={
+                  selection.kind === 'track' && selection.trackId === trackId
+                }
+                commandBindings={commandBindings}
                 canMoveUp={index > 0 && !track.locked}
                 canMoveDown={index < order.length - 1 && !track.locked}
                 onSelect={() => onTrackSelect(trackId)}
+                onNavigate={direction => navigateTrack(trackId, direction)}
                 onToggleLock={() => onTrackToggleLock(trackId)}
                 onToggleOutput={() => onTrackToggleOutput(trackId)}
                 onToggleSolo={() => onTrackToggleSolo(trackId)}
@@ -439,10 +499,14 @@ export default function TimelineTrackArea({
                         clip={clip}
                         status={statuses[clip.id]}
                         selected={selectedClipIds.includes(clipId)}
+                        tabIndex={clipId === rovingClipId ? 0 : -1}
                         pixelsPerTick={pixelsPerTick}
                         outputOffsetTicks={preRollTicks}
                         effectsExpanded={expandedClipIds.has(clipId)}
                         onSelect={additive => onClipSelect(clipId, additive)}
+                        onNavigate={direction =>
+                          navigateClip(clipId, direction)
+                        }
                         onEffectsToggle={() => toggleClipEffects(clipId)}
                         onGestureStart={(event, action) =>
                           onClipGestureStart(event, clip, action)

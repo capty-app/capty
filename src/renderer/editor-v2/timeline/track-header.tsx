@@ -11,13 +11,18 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
-import type { EditorTrack } from '@/types/editor-v2';
+import { getCommandTooltip } from '../commands/command-display';
+import type { EditorTrack, SerializedCommandBinding } from '@/types/editor-v2';
 
 interface TrackHeaderProps {
   track: EditorTrack;
+  tabIndex: number;
+  selected: boolean;
+  commandBindings: readonly SerializedCommandBinding[];
   canMoveUp: boolean;
   canMoveDown: boolean;
   onSelect: () => void;
+  onNavigate: (direction: -1 | 1) => void;
   onToggleLock: () => void;
   onToggleOutput: () => void;
   onToggleSolo: () => void;
@@ -26,9 +31,13 @@ interface TrackHeaderProps {
 
 export default function TrackHeader({
   track,
+  tabIndex,
+  selected,
+  commandBindings,
   canMoveUp,
   canMoveDown,
   onSelect,
+  onNavigate,
   onToggleLock,
   onToggleOutput,
   onToggleSolo,
@@ -38,8 +47,20 @@ export default function TrackHeader({
   return (
     <div className="border-border bg-card flex h-12 items-center gap-1 border-r border-b px-2">
       <button
-        className="min-w-0 flex-1 truncate text-left text-xs"
+        type="button"
+        tabIndex={tabIndex}
+        data-timeline-track-id={track.id}
+        aria-pressed={selected}
+        className={`min-w-0 flex-1 truncate rounded text-left text-xs ${selected ? 'font-semibold underline underline-offset-2' : ''}`}
         onClick={onSelect}
+        onKeyDown={event => {
+          const direction =
+            event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : null;
+          if (direction === null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onNavigate(direction);
+        }}
       >
         {track.name}
       </button>
@@ -48,6 +69,8 @@ export default function TrackHeader({
         size="icon"
         className="size-6"
         aria-label={`${track.locked ? 'Unlock' : 'Lock'} ${track.name}`}
+        aria-pressed={track.locked}
+        title={getCommandTooltip('track.toggle-lock', commandBindings)}
         onClick={onToggleLock}
       >
         {track.locked ? (
@@ -61,6 +84,8 @@ export default function TrackHeader({
         size="icon"
         className="size-6"
         aria-label={`${outputEnabled ? 'Disable' : 'Enable'} ${track.name} output`}
+        aria-pressed={outputEnabled}
+        title={getCommandTooltip('track.toggle-output', commandBindings)}
         onClick={onToggleOutput}
       >
         {track.kind === 'video' ? (
@@ -81,6 +106,7 @@ export default function TrackHeader({
           size="icon"
           className="size-6 text-xs"
           aria-label={`${track.solo ? 'Disable' : 'Enable'} solo for ${track.name}`}
+          aria-pressed={track.solo}
           onClick={onToggleSolo}
         >
           S

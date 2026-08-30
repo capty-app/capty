@@ -11,10 +11,11 @@ import type { EditorV2Workspace } from '@/types/editor-v2';
 
 let rendered: RenderResult | null = null;
 const originalWindowHeight = window.innerHeight;
+const originalWindowWidth = window.innerWidth;
 
 beforeEach(() => {
   window.editorV2 = {
-    getMediaStatus: vi.fn().mockResolvedValue({ status: 'failed' }),
+    getMediaStatus: vi.fn(() => new Promise(() => undefined)),
   } as unknown as Window['editorV2'];
 });
 
@@ -34,6 +35,31 @@ function Harness({ onCommit }: { onCommit: () => void }) {
     videoTrackId: 'video-track',
     audioTrackId: 'audio-track',
   });
+  project.assets.image = {
+    id: 'image',
+    kind: 'image',
+    name: 'Still',
+    locator: { kind: 'managed', relativePath: 'media/image/still.png' },
+    importedAt: '2026-08-30T00:00:00.000Z',
+    width: 1920,
+    height: 1080,
+    orientation: 1,
+    defaultStillDurationTicks: 12_000,
+  };
+  project.sequence.clips.clip = {
+    id: 'clip',
+    kind: 'image',
+    trackId: 'video-track',
+    assetId: 'image',
+    name: 'Still',
+    timelineStart: 0,
+    timelineDuration: 12_000,
+    sourceStart: 0,
+    sourceDuration: 12_000,
+    playbackRate: { numerator: 1, denominator: 1 },
+    effects: [],
+  };
+  project.sequence.tracks['video-track'].clipIds.push('clip');
   return (
     <EditorProvider initialDocument={project}>
       <ThreeDockShell
@@ -42,7 +68,15 @@ function Harness({ onCommit }: { onCommit: () => void }) {
         projectToken="token"
         project={project}
         workspace={workspace}
-        commandBindings={createDefaultCommandBindings('darwin')}
+        commandBindings={createDefaultCommandBindings('darwin').map(binding => {
+          if (binding.commandId === 'workspace.toggle-browser') {
+            return { ...binding, chord: 'Meta+9' };
+          }
+          if (binding.commandId === 'track.toggle-lock') {
+            return { ...binding, chord: 'Alt+L' };
+          }
+          return binding;
+        })}
         canSwitchVersion
         onWorkspaceChange={updateWorkspace}
         onWorkspaceCommit={onCommit}
@@ -59,9 +93,14 @@ afterEach(() => {
   rendered?.unmount();
   rendered?.container.remove();
   rendered = null;
+  vi.unstubAllGlobals();
   Object.defineProperty(window, 'innerHeight', {
     configurable: true,
     value: originalWindowHeight,
+  });
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: originalWindowWidth,
   });
 });
 
@@ -129,16 +168,189 @@ describe('Three-Dock Precision shell', () => {
     ).not.toBeNull();
   });
 
+  it('cycles visible regions with F6 and restores focus after collapse', async () => {
+    rendered = render(<Harness onCommit={() => undefined} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const title = rendered.container.querySelector<HTMLElement>(
+      '[data-workspace-region="title"]'
+    );
+    act(() => title?.focus());
+    act(() =>
+      title?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F6', bubbles: true })
+      )
+    );
+    expect(
+      (document.activeElement as HTMLElement | null)?.dataset.workspaceRegion
+    ).toBe('browser');
+    act(() =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F6', bubbles: true })
+      )
+    );
+    expect(
+      (document.activeElement as HTMLElement | null)?.dataset.workspaceRegion
+    ).toBe('viewer');
+    expect(document.activeElement?.getAttribute('role')).toBe('region');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(
+      'Viewer workspace region'
+    );
+    expect((document.activeElement as HTMLElement).className).toContain(
+      'focus-visible:ring-2'
+    );
+
+    const collapse = [...rendered.container.querySelectorAll('button')].find(
+      button => button.textContent?.includes('Collapse browser')
+    );
+    await act(async () => {
+      collapse?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(
+      (document.activeElement as HTMLElement | null)?.dataset.workspaceRegion
+    ).toBe('title');
+    const show = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Show browser"]'
+    );
+    await act(async () => {
+      show?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(
+      (document.activeElement as HTMLElement | null)?.dataset.workspaceRegion
+    ).toBe('browser');
+  });
+
+  it('opens catalog-driven menus, palette, and shortcut sheet', async () => {
+    rendered = render(<Harness onCommit={() => undefined} />);
+    const commands = [...rendered.container.querySelectorAll('button')].find(
+      button => button.textContent?.includes('Commands')
+    );
+    act(() => commands?.click());
+    expect(document.body.textContent).toContain('Editor Commands');
+    expect(
+      document.body
+        .querySelector('[data-slot="dialog-content"]')
+        ?.className.includes('motion-reduce:duration-0')
+    ).toBe(true);
+    const toggleBrowser = [...document.body.querySelectorAll('button')].find(
+      button => button.textContent?.includes('Toggle Browser')
+    );
+    await act(async () => {
+      toggleBrowser?.click();
+      await Promise.resolve();
+    });
+    expect(
+      rendered.container.querySelector('[aria-label="Project browser"]')
+    ).toBeNull();
+    expect(rendered.container.textContent).toContain(
+      'Toggle Browser completed'
+    );
+
+    const root = rendered.container.firstElementChild;
+    act(() =>
+      root?.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'p',
+          metaKey: true,
+          shiftKey: true,
+          bubbles: true,
+        })
+      )
+    );
+    expect(document.body.textContent).toContain('Command Palette');
+    const close = document.body.querySelector<HTMLButtonElement>(
+      '[data-slot="dialog-close"]'
+    );
+    act(() => close?.click());
+    act(() =>
+      root?.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: '/',
+          metaKey: true,
+          bubbles: true,
+        })
+      )
+    );
+    expect(document.body.textContent).toContain('Editor V2 Shortcuts');
+  });
+
+  it('routes viewer commands through keyboard and command-menu consumers', async () => {
+    class TestAudioContext {
+      currentTime = 0;
+      sampleRate = 48_000;
+      destination = {};
+      resume = vi.fn().mockResolvedValue(undefined);
+      close = vi.fn().mockResolvedValue(undefined);
+    }
+    vi.stubGlobal('AudioContext', TestAudioContext);
+    rendered = render(<Harness onCommit={() => undefined} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const root = rendered.container.firstElementChild;
+    await act(async () => {
+      root?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: ' ', bubbles: true })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(
+      rendered.container.querySelector('[aria-label="Pause"]')
+    ).not.toBeNull();
+
+    const commands = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Editor commands"]'
+    );
+    act(() => commands?.click());
+    const playback = [...document.body.querySelectorAll('button')].find(
+      button => button.textContent?.includes('Play or Pause')
+    );
+    expect(playback?.disabled).toBe(false);
+    await act(async () => {
+      playback?.click();
+      await Promise.resolve();
+    });
+    expect(
+      rendered.container.querySelector('[aria-label="Play"]')
+    ).not.toBeNull();
+  });
+
   it('exposes valued keyboard-operable dock separators', async () => {
     Object.defineProperty(window, 'innerHeight', {
       configurable: true,
       value: 750,
     });
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1200,
+    });
     const onCommit = vi.fn();
     rendered = render(<Harness onCommit={onCommit} />);
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
+      await Promise.resolve();
     });
+    expect(
+      rendered.container.querySelector('[aria-label="Editor commands"]')
+    ).not.toBeNull();
+    expect(
+      [...rendered.container.querySelectorAll('button')].find(button =>
+        button.textContent?.includes('Collapse browser')
+      )?.title
+    ).toBe('Toggle Browser (⌘ 9)');
+    expect(
+      rendered.container.querySelector<HTMLButtonElement>(
+        '[aria-label="Lock Video 1"]'
+      )?.title
+    ).toBe('Toggle Track Lock (⌥ L)');
     const separator = rendered.container.querySelector<HTMLElement>(
       '[aria-label="Resize project browser"]'
     );
@@ -146,6 +358,7 @@ describe('Three-Dock Precision shell', () => {
       '[aria-label="Resize timeline"]'
     );
     expect(separator?.getAttribute('role')).toBe('separator');
+    expect(separator?.className).toContain('focus-visible:ring-2');
     expect(separator?.getAttribute('aria-valuenow')).toBe('240');
     expect(separator?.getAttribute('aria-valuemin')).toBe('200');
     expect(separator?.getAttribute('aria-valuemax')).toBe('400');
@@ -158,9 +371,23 @@ describe('Three-Dock Precision shell', () => {
       );
     });
     expect(separator?.getAttribute('aria-valuenow')).toBe('256');
-    expect(onCommit).toHaveBeenCalledOnce();
+    act(() => {
+      separator?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'End', bubbles: true })
+      );
+    });
+    expect(separator?.getAttribute('aria-valuenow')).toBe('400');
+    act(() => {
+      separator?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Home', bubbles: true })
+      );
+    });
+    expect(separator?.getAttribute('aria-valuenow')).toBe('200');
+    expect(separator?.getAttribute('aria-valuetext')).toBe('200 pixels');
+    expect(onCommit).toHaveBeenCalledTimes(3);
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
+      await Promise.resolve();
     });
   });
 });

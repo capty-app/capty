@@ -124,6 +124,20 @@ describe('Editor V2 timeline', () => {
     );
     act(() => addVideo?.click());
     expect(rendered.container.textContent).toContain('Video 2');
+    const moveVideo = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Move Video 1 down"]'
+    );
+    expect(moveVideo?.tabIndex).toBe(0);
+    act(() => moveVideo?.focus());
+    act(() => moveVideo?.click());
+    const videoTrackLabels = [
+      ...rendered.container.querySelectorAll<HTMLElement>(
+        '[data-timeline-track-id]'
+      ),
+    ]
+      .map(element => element.textContent)
+      .filter(label => label?.startsWith('Video'));
+    expect(videoTrackLabels).toEqual(['Video 2', 'Video 1']);
 
     const hideVideo = rendered.container.querySelector<HTMLButtonElement>(
       '[aria-label="Disable Video 1 output"]'
@@ -134,7 +148,7 @@ describe('Editor V2 timeline', () => {
     ).not.toBeNull();
   });
 
-  it('routes Ripple, delete, and undo keyboard equivalents through the registry', () => {
+  it('routes Ripple, delete, and undo keyboard equivalents through the registry', async () => {
     const onWorkspaceCommit = vi.fn();
     rendered = render(<Harness onWorkspaceCommit={onWorkspaceCommit} />);
     const timeline = rendered.container.querySelector<HTMLElement>(
@@ -144,24 +158,31 @@ describe('Editor V2 timeline', () => {
       '[aria-label="Still clip"]'
     );
     act(() => clip?.click());
+    act(() => clip?.focus());
     act(() => {
-      timeline?.dispatchEvent(
+      clip?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'r', bubbles: true })
       );
     });
     expect(
-      rendered.container.querySelector('[aria-pressed="true"]')?.textContent
-    ).toContain('Ripple');
+      [
+        ...rendered.container.querySelectorAll('button[aria-pressed="true"]'),
+      ].some(button => button.textContent === 'Ripple')
+    ).toBe(true);
     expect(onWorkspaceCommit).toHaveBeenCalled();
 
-    act(() => {
-      timeline?.dispatchEvent(
+    await act(async () => {
+      clip?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true })
       );
+      await Promise.resolve();
+      await Promise.resolve();
     });
     expect(
       rendered.container.querySelector('[aria-label="Still clip"]')
     ).toBeNull();
+    expect(document.activeElement).toBe(timeline);
+    expect(timeline?.className).toContain('focus-visible:ring-2');
     act(() => {
       timeline?.dispatchEvent(
         new KeyboardEvent('keydown', {
@@ -176,15 +197,159 @@ describe('Editor V2 timeline', () => {
     ).not.toBeNull();
   });
 
-  it('uses configured bindings instead of replaced catalog defaults', () => {
-    const bindings = createDefaultCommandBindings('darwin').map(binding =>
-      binding.commandId === 'edit.toggle-ripple'
-        ? { ...binding, chord: 'G' }
-        : binding
+  it('restores focus after keyboard deletion of clips and tracks', async () => {
+    const project = createProject();
+    project.sequence.clips.second = {
+      ...project.sequence.clips.clip,
+      id: 'second',
+      name: 'Second',
+      timelineStart: 360_000,
+    };
+    project.sequence.tracks.video.clipIds.push('second');
+    rendered = render(
+      <Harness onWorkspaceCommit={() => undefined} project={project} />
     );
+
+    const first = rendered.container.querySelector<HTMLElement>(
+      '[data-timeline-clip-id="clip"]'
+    );
+    act(() => first?.click());
+    act(() => first?.focus());
+    await act(async () => {
+      first?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.activeElement?.getAttribute('data-timeline-clip-id')).toBe(
+      'second'
+    );
+
+    const addAudio = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Add audio track"]'
+    );
+    act(() => addAudio?.click());
+    const audioOne = [
+      ...rendered.container.querySelectorAll<HTMLElement>(
+        '[data-timeline-track-id]'
+      ),
+    ].find(element => element.textContent === 'Audio 1');
+    act(() => audioOne?.click());
+    act(() => audioOne?.focus());
+    await act(async () => {
+      audioOne?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.activeElement?.textContent).toBe('Audio 2');
+  });
+
+  it('uses roving clip and track tabindex for keyboard navigation', () => {
+    const project = createProject();
+    project.sequence.clips.second = {
+      ...project.sequence.clips.clip,
+      id: 'second',
+      name: 'Second',
+      timelineStart: 360_000,
+    };
+    project.sequence.tracks.video.clipIds.push('second');
+    rendered = render(
+      <Harness onWorkspaceCommit={() => undefined} project={project} />
+    );
+
+    const first = rendered.container.querySelector<HTMLElement>(
+      '[data-timeline-clip-id="clip"]'
+    );
+    const second = rendered.container.querySelector<HTMLElement>(
+      '[data-timeline-clip-id="second"]'
+    );
+    expect(first?.tabIndex).toBe(0);
+    expect(second?.tabIndex).toBe(-1);
+    act(() => first?.focus());
+    act(() =>
+      first?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
+      )
+    );
+    expect(document.activeElement).toBe(second);
+    expect(second?.getAttribute('aria-pressed')).toBe('true');
+    expect(second?.tabIndex).toBe(0);
+    expect(
+      rendered.container.querySelector<HTMLButtonElement>(
+        '[aria-label="Trim start of Second"]'
+      )?.tabIndex
+    ).toBe(-1);
+    const effectToggle = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Expand Still effect lane"]'
+    );
+    expect(effectToggle?.tabIndex).toBe(0);
+    act(() => effectToggle?.focus());
+    act(() => effectToggle?.click());
+    expect(effectToggle?.getAttribute('aria-expanded')).toBe('true');
+
+    const videoTrack = rendered.container.querySelector<HTMLElement>(
+      '[data-timeline-track-id="video"]'
+    );
+    const audioTrack = rendered.container.querySelector<HTMLElement>(
+      '[data-timeline-track-id="audio"]'
+    );
+    act(() => videoTrack?.focus());
+    act(() =>
+      videoTrack?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })
+      )
+    );
+    expect(document.activeElement).toBe(audioTrack);
+    expect(audioTrack?.getAttribute('aria-pressed')).toBe('true');
+
+    const solo = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Enable solo for Audio 1"]'
+    );
+    const lock = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Lock Audio 1"]'
+    );
+    const output = rendered.container.querySelector<HTMLButtonElement>(
+      '[aria-label="Disable Audio 1 output"]'
+    );
+    for (const control of [solo, lock, output]) {
+      expect(control?.tabIndex).toBe(0);
+    }
+    act(() => solo?.focus());
+    act(() => solo?.click());
+    expect(solo?.getAttribute('aria-pressed')).toBe('true');
+    act(() => output?.focus());
+    act(() => output?.click());
+    expect(output?.getAttribute('aria-pressed')).toBe('false');
+    act(() => lock?.focus());
+    act(() => lock?.click());
+    expect(lock?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('uses configured bindings instead of replaced catalog defaults', () => {
+    const bindings = createDefaultCommandBindings('darwin').map(binding => {
+      if (binding.commandId === 'edit.toggle-ripple') {
+        return { ...binding, chord: 'G' };
+      }
+      if (binding.commandId === 'track.toggle-lock') {
+        return { ...binding, chord: 'Alt+L' };
+      }
+      return binding;
+    });
     rendered = render(
       <Harness onWorkspaceCommit={() => undefined} commandBindings={bindings} />
     );
+    const rippleButton = [
+      ...rendered.container.querySelectorAll('button'),
+    ].find(button => button.textContent === 'Ripple');
+    expect(rippleButton?.title).toContain('(G)');
+    expect(
+      rendered.container.querySelector<HTMLButtonElement>(
+        '[aria-label="Lock Video 1"]'
+      )?.title
+    ).toBe('Toggle Track Lock (⌥ L)');
     const timeline = rendered.container.querySelector<HTMLElement>(
       '[aria-label="Timeline"]'
     );
@@ -245,7 +410,9 @@ describe('Editor V2 timeline', () => {
     );
     expect(firstFrame).not.toBeNull();
     expect(firstFrame?.onpointerdown).toBeNull();
-    expect(clip?.getAttribute('style')).toContain('left: 1.666667px');
+    expect(clip?.parentElement?.getAttribute('style')).toContain(
+      'left: 1.666667px'
+    );
     act(() => firstFrame?.click());
     expect(firstFrame?.className).toContain('ring-primary');
   });

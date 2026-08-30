@@ -71,6 +71,11 @@ interface ShortcutItem extends BaseItem {
   setValue: (s: SettingsConfig, v: string) => Partial<SettingsConfig>;
 }
 
+interface EditorCommandShortcutItem extends BaseItem {
+  type: 'editor-command-shortcut';
+  commandId: string;
+}
+
 interface InputItem extends BaseItem {
   type: 'input';
   placeholder?: string;
@@ -110,6 +115,7 @@ export type SettingsItem =
   | SelectItem
   | SliderItem
   | ShortcutItem
+  | EditorCommandShortcutItem
   | InputItem
   | PathPickerItem
   | NamingPatternItem
@@ -220,6 +226,15 @@ const SECTION_DESCRIPTIONS: Record<string, Record<string, string>> = {
       'Configure keyboard shortcuts for screenshot editor actions',
     'Video Editor Shortcuts':
       'Configure keyboard shortcuts for video editor sidebar panels',
+    'Editor V2 Project': 'Configure project commands in Editor V2',
+    'Editor V2 Edit': 'Configure editing commands in Editor V2',
+    'Editor V2 Tools and Effects':
+      'Configure tool and effect commands in Editor V2',
+    'Editor V2 Playback': 'Configure playback commands in Editor V2',
+    'Editor V2 Timeline and Tracks':
+      'Configure timeline and track commands in Editor V2',
+    'Editor V2 Workspace and Focus':
+      'Configure workspace and focus commands in Editor V2',
   },
   cloud: {
     'Cloud Upload': 'Choose where to upload screenshots and enable uploads',

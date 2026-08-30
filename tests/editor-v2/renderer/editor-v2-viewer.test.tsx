@@ -91,6 +91,7 @@ describe('EditorV2Viewer', () => {
 
     await flush();
     expect(rendered.container.textContent).toContain('Media is missing');
+    expect(rendered.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(window.editorV2.getMediaStatus).toHaveBeenCalledWith({
       projectToken: 'token',
       assetId: 'image',
@@ -250,6 +251,7 @@ describe('EditorV2Viewer', () => {
     await flush();
     await flush();
     expect(rendered.container.textContent).toContain('Media could not decode');
+    expect(rendered.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(rendered.container.textContent).toContain(
       'Cursor data changed outside Capty'
     );
@@ -323,6 +325,11 @@ describe('EditorV2Viewer', () => {
     );
 
     expect(rendered.container.textContent).toContain('Loading frame');
+    expect(
+      rendered.container
+        .querySelector('.animate-spin')
+        ?.classList.contains('motion-reduce:animate-none')
+    ).toBe(true);
     await act(async () => {
       await Promise.resolve();
     });
@@ -332,6 +339,7 @@ describe('EditorV2Viewer', () => {
     });
     await flush();
     expect(rendered.container.textContent).toContain('Media could not decode');
+    expect(rendered.container.querySelector('[role="alert"]')).not.toBeNull();
     expect(rendered.container.textContent).toContain('decoder unavailable');
   });
 });
