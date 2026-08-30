@@ -26,7 +26,7 @@ export interface LegacyDataReadResult<T> {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isValidCursorData = (value: unknown): value is CursorData => {
+export const isValidCursorData = (value: unknown): value is CursorData => {
   const validation = validateCursorData(value);
   if (!validation.valid || !validation.data) return false;
   return (
@@ -52,7 +52,7 @@ const isValidCursorData = (value: unknown): value is CursorData => {
   );
 };
 
-const isValidSubtitleData = (value: unknown): value is SubtitleData => {
+export const isValidSubtitleData = (value: unknown): value is SubtitleData => {
   const validation = validateSubtitleData(value);
   if (!validation.valid || !validation.data) return false;
   return validation.data.segments.every(
@@ -73,7 +73,7 @@ const isValidSubtitleData = (value: unknown): value is SubtitleData => {
   );
 };
 
-const validateKeyboardData = (value: unknown): value is KeyboardData => {
+export const validateKeyboardData = (value: unknown): value is KeyboardData => {
   if (
     !isRecord(value) ||
     !Array.isArray(value.events) ||

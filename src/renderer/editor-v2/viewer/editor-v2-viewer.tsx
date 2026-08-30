@@ -23,7 +23,9 @@ import {
 } from '@/editor-v2/timeline';
 import { Button } from '@/renderer/components/ui/button';
 import { EditorV2CompositionEngine } from '../composition/composition-engine';
+import { createLegacyCaptyEffectAdapter } from '../composition/legacy-capty-effect-adapter';
 import { BrowserCompositionSourceProvider } from '../composition/source-provider';
+import DirectManipulationOverlay from './direct-manipulation-overlay';
 import { formatViewerTimecode } from './timecode';
 import {
   EDITOR_V2_TICKS_PER_SECOND,
@@ -35,6 +37,7 @@ interface EditorV2ViewerProps {
   project: EditorProjectV2;
   currentTick?: number;
   onCurrentTickChange?: (tick: number) => void;
+  directManipulation?: boolean;
 }
 
 type ViewerStatus =
@@ -50,6 +53,7 @@ export default function EditorV2Viewer({
   project,
   currentTick: controlledCurrentTick,
   onCurrentTickChange,
+  directManipulation = false,
 }: EditorV2ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef(0);
@@ -97,7 +101,16 @@ export default function EditorV2Viewer({
             sourceRole,
           });
         }
-      )
+      ),
+      createLegacyCaptyEffectAdapter(async (kind, locator) => {
+        const result = await window.editorV2.readData({
+          projectToken,
+          kind,
+          locator,
+        });
+        if (result.status === 'failed') throw new Error(result.error);
+        return result.data;
+      })
     );
   }, [project.assets, projectToken]);
 
@@ -108,17 +121,6 @@ export default function EditorV2Viewer({
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     if (!canvas) return;
-    if (evaluation.layers.length === 0) {
-      setStatus(duration === 0 ? { kind: 'empty' } : { kind: 'gap' });
-      const context = canvas.getContext('2d');
-      if (context) {
-        canvas.width = evaluation.composition.width;
-        canvas.height = evaluation.composition.height;
-        context.fillStyle = evaluation.composition.backgroundColor;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-      }
-      return;
-    }
     setStatus({ kind: 'loading' });
     renderQueueRef.current = renderQueueRef.current.then(async () => {
       if (requestRef.current !== requestId) return;
@@ -149,6 +151,26 @@ export default function EditorV2Viewer({
             kind: 'decode-error',
             error: decodeError.error ?? 'Media decode failed',
           });
+          return;
+        }
+        const hasSequenceVisual = evaluation.composition.effects.some(
+          effect => {
+            if (!effect.enabled) return false;
+            if (effect.kind === 'wallpaper') {
+              return effect.background.kind !== 'none';
+            }
+            if (effect.kind === 'annotation') {
+              return (
+                evaluation.outputTick >= effect.range.start &&
+                evaluation.outputTick < effect.range.end &&
+                effect.annotations.length > 0
+              );
+            }
+            return effect.kind === 'device-frame';
+          }
+        );
+        if (evaluation.layers.length === 0 && !hasSequenceVisual) {
+          setStatus(duration === 0 ? { kind: 'empty' } : { kind: 'gap' });
           return;
         }
         setStatus({ kind: 'ready' });
@@ -218,17 +240,16 @@ export default function EditorV2Viewer({
       className="bg-background flex min-h-0 min-w-0 flex-1 flex-col"
     >
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/70 p-6">
-        <canvas
-          ref={canvasRef}
-          aria-label="Composition canvas"
+        <div
           className={
             fit
-              ? 'max-h-full max-w-full object-contain shadow-2xl'
-              : 'max-h-none max-w-none shadow-2xl'
+              ? 'relative max-h-full max-w-full shadow-2xl'
+              : 'relative shrink-0 shadow-2xl'
           }
           style={
             fit
               ? {
+                  width: evaluation.composition.width,
                   aspectRatio: `${evaluation.composition.width} / ${evaluation.composition.height}`,
                 }
               : {
@@ -236,7 +257,19 @@ export default function EditorV2Viewer({
                   height: evaluation.composition.height,
                 }
           }
-        />
+        >
+          <canvas
+            ref={canvasRef}
+            aria-label="Composition canvas"
+            className="block size-full object-contain"
+          />
+          {directManipulation ? (
+            <DirectManipulationOverlay
+              width={evaluation.composition.width}
+              height={evaluation.composition.height}
+            />
+          ) : null}
+        </div>
         {status.kind !== 'ready' ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center">
             <div className="rounded-md bg-black/70 px-4 py-3 text-white shadow-lg">

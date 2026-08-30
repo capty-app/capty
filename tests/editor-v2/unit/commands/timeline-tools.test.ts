@@ -528,9 +528,24 @@ describe('timeline edit commands', () => {
     ).toThrow('overlaps');
   });
 
-  it('splits every crossing linked sibling into one undoable edit', () => {
+  it('splits every crossing linked sibling without losing effects', () => {
     const project = createProject();
-    addImageClip(project, 'video-linked', 100, 100, 'group');
+    const video = addImageClip(project, 'video-linked', 100, 100, 'group');
+    video.effects.push({
+      id: 'zoom',
+      kind: 'zoom',
+      enabled: true,
+      timeDomain: 'content-timeline',
+      range: { start: 100, end: 200 },
+      scale: 2,
+      target: 'manual',
+      focusX: 0.5,
+      focusY: 0.5,
+      transitionInTicks: 10,
+      transitionOutTicks: 10,
+      followSmoothness: 0.1,
+      lookAheadTicks: 0,
+    });
     addAudioClip(project, 'audio-linked', 120, 0, 40, 'group');
     let nextId = 0;
     const split = executeEditorCommand(
@@ -540,6 +555,12 @@ describe('timeline edit commands', () => {
     expect(Object.keys(split.document.sequence.clips)).toHaveLength(4);
     expect(split.document.sequence.clips['split-0'].timelineStart).toBe(140);
     expect(split.document.sequence.clips['split-1'].timelineStart).toBe(140);
+    expect(split.document.sequence.clips['video-linked'].effects).toEqual(
+      video.effects
+    );
+    expect(split.document.sequence.clips['split-0'].effects).toEqual(
+      video.effects
+    );
     expect(
       executeEditorCommand(split.document, split.inverse).document
     ).toEqual(project);

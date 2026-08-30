@@ -1,7 +1,8 @@
 import React from 'react';
-import { Film, Search, Sparkles } from 'lucide-react';
+import { Film, Sparkles } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
+import EffectsBrowser from '@/renderer/editor-v2/effects/effects-browser';
 import ProjectBrowser from '@/renderer/editor-v2/media/project-browser';
 import type { EditorV2Workspace } from '@/types/editor-v2';
 
@@ -57,25 +58,7 @@ export default function BrowserDock({
           operationsFrozen={operationsFrozen}
         />
       ) : (
-        <>
-          <div className="border-border flex h-9 items-center gap-2 border-b px-3">
-            <Search className="text-muted-foreground size-3.5" />
-            <span className="text-muted-foreground text-xs">
-              Search effects
-            </span>
-          </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-center">
-            <div>
-              <div className="bg-muted mx-auto mb-3 flex size-10 items-center justify-center rounded-md">
-                <Sparkles className="text-muted-foreground size-5" />
-              </div>
-              <p className="text-sm font-medium">Effects library</p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Effects are not available in this preview.
-              </p>
-            </div>
-          </div>
-        </>
+        <EffectsBrowser projectToken={projectToken} />
       )}
       <div className="border-border border-t p-2">
         <Button

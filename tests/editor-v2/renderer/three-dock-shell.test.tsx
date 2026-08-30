@@ -66,8 +66,12 @@ afterEach(() => {
 });
 
 describe('Three-Dock Precision shell', () => {
-  it('mounts one browser, viewer, inspector, and timeline', () => {
+  it('mounts one browser, viewer, inspector, and timeline', async () => {
     rendered = render(<Harness onCommit={() => undefined} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(
       rendered.container.querySelectorAll('[aria-label="Project browser"]')
     ).toHaveLength(1);
@@ -125,13 +129,16 @@ describe('Three-Dock Precision shell', () => {
     ).not.toBeNull();
   });
 
-  it('exposes valued keyboard-operable dock separators', () => {
+  it('exposes valued keyboard-operable dock separators', async () => {
     Object.defineProperty(window, 'innerHeight', {
       configurable: true,
       value: 750,
     });
     const onCommit = vi.fn();
     rendered = render(<Harness onCommit={onCommit} />);
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
     const separator = rendered.container.querySelector<HTMLElement>(
       '[aria-label="Resize project browser"]'
     );
@@ -152,5 +159,8 @@ describe('Three-Dock Precision shell', () => {
     });
     expect(separator?.getAttribute('aria-valuenow')).toBe('256');
     expect(onCommit).toHaveBeenCalledOnce();
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
   });
 });

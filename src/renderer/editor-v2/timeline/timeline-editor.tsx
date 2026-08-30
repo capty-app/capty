@@ -33,6 +33,7 @@ import {
 } from '@/editor-v2/commands/transitions';
 import { ticksForFrames } from '@/editor-v2/time/timebase';
 import { getSequenceOutputDuration } from '@/editor-v2/timeline';
+import { getPreRollDuration } from '@/editor-v2/timeline/pre-roll';
 import TimelineToolbar from './timeline-toolbar';
 import TimelineTrackArea from './timeline-track-area';
 import type {
@@ -163,6 +164,8 @@ export default function TimelineEditor({
     {}
   );
   const [error, setError] = useState<string | null>(null);
+  const preRollTicks = getPreRollDuration(store.document);
+  const contentPlayheadTick = Math.max(0, playheadTick - preRollTicks);
   const duration = Math.max(
     getSequenceOutputDuration(store.document),
     5 * store.document.timebase.ticksPerSecond
@@ -367,10 +370,12 @@ export default function TimelineEditor({
   const splitSelection = useCallback(() => {
     if (clipIds.length === 0) return;
     run(
-      createSplitClipsCommand(clipIds, playheadTick, () => crypto.randomUUID()),
+      createSplitClipsCommand(clipIds, contentPlayheadTick, () =>
+        crypto.randomUUID()
+      ),
       'Move the playhead inside an unlocked selected clip and outside transitions'
     );
-  }, [clipIds, playheadTick, run]);
+  }, [clipIds, contentPlayheadTick, run]);
 
   const placeSelectedAsset = useCallback(() => {
     if (!placementAssetId) return;
@@ -389,15 +394,15 @@ export default function TimelineEditor({
       createPlaceAssetCommand({
         assetId: placementAssetId,
         trackId: track.id,
-        timelineStart: playheadTick,
+        timelineStart: contentPlayheadTick,
         clipId: crypto.randomUUID(),
         ripple: workspace.rippleEnabled,
       }),
       'The selected asset could not be placed at the playhead'
     );
   }, [
+    contentPlayheadTick,
     placementAssetId,
-    playheadTick,
     reportFailure,
     run,
     store.document,
@@ -655,7 +660,7 @@ export default function TimelineEditor({
           deltaTicks: totalDelta,
           pixelsPerTick,
           pixelThreshold: SNAP_THRESHOLD_PIXELS,
-          playheadTick,
+          playheadTick: contentPlayheadTick,
           excludeClipIds: new Set(movingClips.map(clip => clip.id)),
         });
         if (closest) {
@@ -693,8 +698,8 @@ export default function TimelineEditor({
       setAutoScrollDirection(0);
     },
     [
+      contentPlayheadTick,
       pixelsPerTick,
-      playheadTick,
       setAutoScrollDirection,
       store,
       workspace.rippleEnabled,
@@ -856,6 +861,7 @@ export default function TimelineEditor({
         </div>
       ) : null}
       <TimelineTrackArea
+        projectToken={projectToken}
         project={store.document}
         selection={store.selection}
         orderedTrackIds={orderedTrackIds}
@@ -914,6 +920,15 @@ export default function TimelineEditor({
           )
         }
         onClipSelect={updateClipSelection}
+        onEffectSelect={(clipId, effectId) =>
+          store.setSelection({ kind: 'effect', clipId, effectId })
+        }
+        onSequenceEffectSelect={effectId =>
+          store.setSelection({ kind: 'effect', effectId })
+        }
+        onFirstFrameSelect={assetId =>
+          store.setSelection({ kind: 'asset', assetId })
+        }
         onClipGestureStart={beginGesture}
         onTransitionSelect={transitionId =>
           store.setSelection({ kind: 'transition', transitionId })

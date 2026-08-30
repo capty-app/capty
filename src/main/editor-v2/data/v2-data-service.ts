@@ -4,8 +4,14 @@ import { createHash } from 'crypto';
 
 import { validateEditorProject } from '@/editor-v2/document/validate';
 
-import { fingerprintFile } from './legacy-data-reader';
 import {
+  fingerprintFile,
+  isValidCursorData,
+  isValidSubtitleData,
+  validateKeyboardData,
+} from './legacy-data-reader';
+import {
+  assertSafeProjectReadPath,
   ensureEditorV2ProjectDirectories,
   ensureSafeProjectWritePath,
   getEditorV2ProjectPaths,
@@ -14,21 +20,33 @@ import { writeJsonAtomic } from '../project/atomic-project-writer';
 import type {
   EditableDataLocator,
   EditorProjectV2,
+  EditorV2DataKind,
+  EditorV2DataValue,
   V1ReadOnlyDataLocator,
   V2DataLocator,
 } from '@/types/editor-v2';
 
-export type EditorV2DataKind = 'cursor' | 'keyboard' | 'subtitles';
-
 const locatorMatches = (
   locator: EditableDataLocator,
   expected: EditableDataLocator
-): boolean =>
-  locator.kind === expected.kind &&
-  locator.relativePath === expected.relativePath &&
-  locator.fingerprint.sha256 === expected.fingerprint.sha256;
+): boolean => {
+  if (
+    locator.kind !== expected.kind ||
+    locator.relativePath !== expected.relativePath ||
+    locator.fingerprint.sha256 !== expected.fingerprint.sha256 ||
+    locator.fingerprint.byteLength !== expected.fingerprint.byteLength
+  ) {
+    return false;
+  }
+  if (locator.kind === 'v1-read-only') return true;
+  if (expected.kind !== 'v2-data') return false;
+  if (!locator.provenance || !expected.provenance) {
+    return locator.provenance === expected.provenance;
+  }
+  return locatorMatches(locator.provenance, expected.provenance);
+};
 
-const projectUsesDataLocator = (
+export const projectUsesDataLocator = (
   project: EditorProjectV2,
   expected: EditableDataLocator
 ): boolean => {
@@ -52,6 +70,89 @@ const projectUsesDataLocator = (
         locatorMatches(effect.data, expected)
     )
   );
+};
+
+const effectKindForData = (
+  kind: EditorV2DataKind
+): 'cursor' | 'keyboard' | 'subtitle' =>
+  kind === 'subtitles' ? 'subtitle' : kind;
+
+export const resolveAssetDataLocator = (
+  project: EditorProjectV2,
+  assetId: string,
+  kind: EditorV2DataKind
+): EditableDataLocator | null => {
+  const asset = project.assets[assetId];
+  if (!asset) return null;
+  if (asset.kind === 'capty-recording') {
+    const source = asset.sources[kind];
+    if (source) return source.locator;
+  }
+  const effectKind = effectKindForData(kind);
+  for (const clip of Object.values(project.sequence.clips)) {
+    if (clip.assetId !== assetId) continue;
+    const effect = clip.effects.find(current => current.kind === effectKind);
+    if (
+      effect?.kind === 'cursor' ||
+      effect?.kind === 'keyboard' ||
+      effect?.kind === 'subtitle'
+    ) {
+      return effect.data;
+    }
+  }
+  return null;
+};
+
+const projectUsesDataLocatorForKind = (
+  project: EditorProjectV2,
+  kind: EditorV2DataKind,
+  expected: EditableDataLocator
+): boolean =>
+  Object.keys(project.assets).some(assetId => {
+    const canonical = resolveAssetDataLocator(project, assetId, kind);
+    return canonical ? locatorMatches(canonical, expected) : false;
+  });
+
+export const readEditorData = async (
+  packagePath: string,
+  project: EditorProjectV2,
+  kind: EditorV2DataKind,
+  locator: EditableDataLocator
+): Promise<EditorV2DataValue> => {
+  if (!projectUsesDataLocatorForKind(project, kind, locator)) {
+    throw new Error('Data locator is not active for this data kind');
+  }
+  const filePath = await assertSafeProjectReadPath(
+    packagePath,
+    locator.relativePath
+  );
+  const [serialized, fingerprint] = await Promise.all([
+    fs.readFile(filePath, 'utf-8'),
+    fingerprintFile(filePath),
+  ]);
+  if (
+    fingerprint.sha256 !== locator.fingerprint.sha256 ||
+    fingerprint.byteLength !== locator.fingerprint.byteLength
+  ) {
+    throw new Error('Editor data changed outside Capty');
+  }
+  const value: unknown = JSON.parse(serialized);
+  switch (kind) {
+    case 'cursor':
+      if (!isValidCursorData(value))
+        throw new Error('Cursor data is malformed');
+      return { kind, value };
+    case 'keyboard':
+      if (!validateKeyboardData(value)) {
+        throw new Error('Keyboard data is malformed');
+      }
+      return { kind, value };
+    case 'subtitles':
+      if (!isValidSubtitleData(value)) {
+        throw new Error('Subtitle data is malformed');
+      }
+      return { kind, value };
+  }
 };
 
 export const replaceEditorDataLocator = (
@@ -108,56 +209,95 @@ export interface CopyOnWriteDataResult {
   locator: V2DataLocator;
 }
 
-export const writeEditorDataCopyOnWrite = async (
-  input: CopyOnWriteDataInput
-): Promise<CopyOnWriteDataResult> => {
-  if (!projectUsesDataLocator(input.project, input.expectedLocator)) {
-    throw new Error('Expected data locator is not active in the project');
-  }
-
-  const serializedValue = JSON.stringify(input.value);
+const writeEditorDataFile = async (
+  packagePath: string,
+  assetId: string,
+  kind: EditorV2DataKind,
+  value: unknown,
+  provenance?: V1ReadOnlyDataLocator
+): Promise<V2DataLocator> => {
+  const serializedValue = JSON.stringify(value);
   if (serializedValue === undefined) {
     throw new Error('Editor data must be JSON serializable');
   }
-
-  await ensureEditorV2ProjectDirectories(input.packagePath);
+  await ensureEditorV2ProjectDirectories(packagePath);
   const valueHash = createHash('sha256')
     .update(serializedValue)
     .digest('hex')
     .slice(0, 16);
-  const relativePath = path.join(
-    'data',
-    input.assetId,
-    `${input.kind}-${valueHash}.json`
-  );
-  const target = await ensureSafeProjectWritePath(
-    input.packagePath,
-    relativePath
-  );
+  const relativePath = path.join('data', assetId, `${kind}-${valueHash}.json`);
+  const target = await ensureSafeProjectWritePath(packagePath, relativePath);
   await writeJsonAtomic(
     {
       target,
       temporary: `${target}.tmp`,
       backup: `${target}.bak`,
     },
-    input.value
+    value
   );
-
-  const locator: V2DataLocator = {
+  return {
     kind: 'v2-data',
     relativePath,
     fingerprint: await fingerprintFile(target),
-    provenance:
-      input.expectedLocator.kind === 'v1-read-only'
-        ? input.expectedLocator
-        : input.expectedLocator.provenance,
+    provenance,
   };
+};
+
+export const writeEditorDataCopyOnWrite = async (
+  input: CopyOnWriteDataInput
+): Promise<CopyOnWriteDataResult> => {
+  const canonical = resolveAssetDataLocator(
+    input.project,
+    input.assetId,
+    input.kind
+  );
+  if (!canonical || !locatorMatches(canonical, input.expectedLocator)) {
+    throw new Error(
+      'Expected data locator does not match the active asset data'
+    );
+  }
+  const locator = await writeEditorDataFile(
+    input.packagePath,
+    input.assetId,
+    input.kind,
+    input.value,
+    canonical.kind === 'v1-read-only' ? canonical : canonical.provenance
+  );
   const nextProject = replaceEditorDataLocator(
     input.project,
-    input.expectedLocator,
+    canonical,
     locator
   );
   const committedProject = await input.commitProject(nextProject);
+  await recoverOrphanEditorData(input.packagePath, committedProject);
+  return { project: committedProject, locator };
+};
+
+export interface CreateEditorDataInput {
+  packagePath: string;
+  project: EditorProjectV2;
+  assetId: string;
+  kind: EditorV2DataKind;
+  value: unknown;
+  attach: (project: EditorProjectV2, locator: V2DataLocator) => EditorProjectV2;
+  commitProject: (project: EditorProjectV2) => Promise<EditorProjectV2>;
+}
+
+export const createEditorData = async (
+  input: CreateEditorDataInput
+): Promise<CopyOnWriteDataResult> => {
+  if (!input.project.assets[input.assetId]) {
+    throw new Error('Editor data asset does not exist');
+  }
+  const locator = await writeEditorDataFile(
+    input.packagePath,
+    input.assetId,
+    input.kind,
+    input.value
+  );
+  const committedProject = await input.commitProject(
+    input.attach(input.project, locator)
+  );
   await recoverOrphanEditorData(input.packagePath, committedProject);
   return { project: committedProject, locator };
 };
@@ -200,6 +340,8 @@ export const removeEditorDataLocator = (
 export interface MutateEditorDataReferenceInput {
   packagePath: string;
   project: EditorProjectV2;
+  assetId: string;
+  kind: EditorV2DataKind;
   expectedLocator: EditableDataLocator;
   commitProject: (project: EditorProjectV2) => Promise<EditorProjectV2>;
 }
@@ -207,10 +349,17 @@ export interface MutateEditorDataReferenceInput {
 export const deleteEditorData = async (
   input: MutateEditorDataReferenceInput
 ): Promise<EditorProjectV2> => {
-  if (!projectUsesDataLocator(input.project, input.expectedLocator)) {
-    throw new Error('Expected data locator is not active in the project');
+  const canonical = resolveAssetDataLocator(
+    input.project,
+    input.assetId,
+    input.kind
+  );
+  if (!canonical || !locatorMatches(canonical, input.expectedLocator)) {
+    throw new Error(
+      'Expected data locator does not match the active asset data'
+    );
   }
-  const next = removeEditorDataLocator(input.project, input.expectedLocator);
+  const next = removeEditorDataLocator(input.project, canonical);
   const committed = await input.commitProject(next);
   await recoverOrphanEditorData(input.packagePath, committed);
   return committed;
@@ -219,19 +368,26 @@ export const deleteEditorData = async (
 export const resetEditorDataToV1 = async (
   input: MutateEditorDataReferenceInput
 ): Promise<EditorProjectV2> => {
-  if (input.expectedLocator.kind !== 'v2-data') {
+  const canonical = resolveAssetDataLocator(
+    input.project,
+    input.assetId,
+    input.kind
+  );
+  if (!canonical || !locatorMatches(canonical, input.expectedLocator)) {
+    throw new Error(
+      'Expected data locator does not match the active asset data'
+    );
+  }
+  if (canonical.kind !== 'v2-data') {
     throw new Error('Only V2 data can be reset');
   }
-  if (!input.expectedLocator.provenance) {
+  if (!canonical.provenance) {
     throw new Error('V2 data has no V1 provenance');
-  }
-  if (!projectUsesDataLocator(input.project, input.expectedLocator)) {
-    throw new Error('Expected data locator is not active in the project');
   }
   const next = replaceEditorDataLocator(
     input.project,
-    input.expectedLocator,
-    input.expectedLocator.provenance
+    canonical,
+    canonical.provenance
   );
   const committed = await input.commitProject(next);
   await recoverOrphanEditorData(input.packagePath, committed);

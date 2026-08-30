@@ -80,6 +80,22 @@ function StoreHarness({ autosave = false }: { autosave?: boolean }) {
       >
         Flush
       </button>
+      <button
+        disabled={!autosave}
+        onClick={() => {
+          void autosaveQueue.flushProject().then(revision => {
+            store.replaceFromDisk({
+              ...store.getSnapshot().document,
+              revision: revision + 1,
+            });
+            autosaveQueue.resetDiskRevision(revision + 1);
+            store.execute(renameCommand('After Data'));
+            return autosaveQueue.flushProject();
+          });
+        }}
+      >
+        Flush Data Boundary
+      </button>
     </div>
   );
 }
@@ -204,6 +220,35 @@ describe('Editor V2 root store', () => {
     expect(saveProject.mock.calls[1][0]).toMatchObject({
       expectedRevision: 1,
       project: { name: 'Three' },
+    });
+  });
+
+  it('flushes pending edits and advances autosave after a data boundary', async () => {
+    saveProject
+      .mockResolvedValueOnce({ status: 'saved', revision: 1 })
+      .mockResolvedValueOnce({ status: 'saved', revision: 3 });
+    rendered = render(
+      <EditorProvider initialDocument={createProject()}>
+        <StoreHarness autosave />
+      </EditorProvider>
+    );
+    click('One');
+    click('Flush Data Boundary');
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveProject).toHaveBeenCalledTimes(2);
+    expect(saveProject.mock.calls[0][0]).toMatchObject({
+      expectedRevision: 0,
+      project: { name: 'One' },
+    });
+    expect(saveProject.mock.calls[1][0]).toMatchObject({
+      expectedRevision: 2,
+      project: { name: 'After Data' },
     });
   });
 

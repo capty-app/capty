@@ -77,6 +77,12 @@ export interface OpenEditorProjectResult {
   mediaRecoveryWarnings: string[];
 }
 
+export class ProjectStaleRevisionError extends Error {
+  constructor(readonly diskRevision: number) {
+    super('Editor project revision is stale');
+  }
+}
+
 export interface ConvertStandaloneProjectInput {
   session: EditorProjectSession;
   destinationPath: string;
@@ -283,68 +289,106 @@ export class EditorProjectService {
     }
   }
 
+  private async persistProject(
+    session: EditorProjectSession,
+    expectedRevision: number,
+    project: EditorProjectV2
+  ): Promise<EditorV2SaveResult> {
+    try {
+      if (session.staleRecoveryOpen) {
+        return {
+          status: 'failed',
+          error: 'Reload or save a copy before saving this project',
+        };
+      }
+      const packagePath = getPackagePath(session);
+      const current = await recoverAtomicJson(
+        projectAtomicPaths(packagePath),
+        isEditorProject
+      );
+      const diskRevision = current.value?.revision ?? 0;
+      if (current.value && diskRevision !== expectedRevision) {
+        session.staleRecoveryOpen = true;
+        return { status: 'stale', diskRevision };
+      }
+      if (!current.value && expectedRevision !== 0) {
+        session.staleRecoveryOpen = true;
+        return { status: 'stale', diskRevision: 0 };
+      }
+
+      const nextProject: EditorProjectV2 = {
+        ...project,
+        revision: expectedRevision + 1,
+        updatedAt: new Date().toISOString(),
+      };
+      const validation = validateEditorProject(nextProject);
+      if (!validation.valid) {
+        return { status: 'failed', error: 'Project validation failed' };
+      }
+      await validateProjectLocatorAccess(
+        packagePath,
+        nextProject,
+        session.linkedPathAuthorization
+      );
+
+      await ensureEditorV2ProjectDirectories(packagePath);
+      for (const file of session.pendingManagedFiles) {
+        await writePendingManagedFile(packagePath, file);
+      }
+      await writeJsonAtomic(projectAtomicPaths(packagePath), nextProject);
+      session.pendingManagedFiles = [];
+      session.staleRecoveryOpen = false;
+      session.activeProject = structuredClone(nextProject);
+      const format = getProjectFormat(packagePath);
+      if (format && session.location.kind === 'capty-package') {
+        session.location = { ...session.location, format };
+      }
+      return { status: 'saved', revision: nextProject.revision };
+    } catch (error) {
+      return {
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async saveProject(
     session: EditorProjectSession,
     expectedRevision: number,
     project: EditorProjectV2
   ): Promise<EditorV2SaveResult> {
+    return this.enqueue(session, () =>
+      this.persistProject(session, expectedRevision, project)
+    );
+  }
+
+  async runProjectMutation<T>(
+    session: EditorProjectSession,
+    expectedRevision: number,
+    operation: (
+      project: EditorProjectV2,
+      commitProject: (project: EditorProjectV2) => Promise<EditorProjectV2>
+    ) => Promise<T>
+  ): Promise<T> {
     return this.enqueue(session, async () => {
-      try {
-        if (session.staleRecoveryOpen) {
-          return {
-            status: 'failed',
-            error: 'Reload or save a copy before saving this project',
-          };
-        }
-        const packagePath = getPackagePath(session);
-        const current = await recoverAtomicJson(
-          projectAtomicPaths(packagePath),
-          isEditorProject
+      let committed = false;
+      const commitProject = async (
+        project: EditorProjectV2
+      ): Promise<EditorProjectV2> => {
+        if (committed) throw new Error('Project mutation already committed');
+        const result = await this.persistProject(
+          session,
+          expectedRevision,
+          project
         );
-        const diskRevision = current.value?.revision ?? 0;
-        if (current.value && diskRevision !== expectedRevision) {
-          session.staleRecoveryOpen = true;
-          return { status: 'stale', diskRevision };
+        if (result.status === 'stale') {
+          throw new ProjectStaleRevisionError(result.diskRevision);
         }
-        if (!current.value && expectedRevision !== 0) {
-          session.staleRecoveryOpen = true;
-          return { status: 'stale', diskRevision: 0 };
-        }
-
-        const nextProject: EditorProjectV2 = {
-          ...project,
-          revision: expectedRevision + 1,
-          updatedAt: new Date().toISOString(),
-        };
-        const validation = validateEditorProject(nextProject);
-        if (!validation.valid) {
-          return { status: 'failed', error: 'Project validation failed' };
-        }
-        await validateProjectLocatorAccess(
-          packagePath,
-          nextProject,
-          session.linkedPathAuthorization
-        );
-
-        await ensureEditorV2ProjectDirectories(packagePath);
-        for (const file of session.pendingManagedFiles) {
-          await writePendingManagedFile(packagePath, file);
-        }
-        await writeJsonAtomic(projectAtomicPaths(packagePath), nextProject);
-        session.pendingManagedFiles = [];
-        session.staleRecoveryOpen = false;
-        session.activeProject = structuredClone(nextProject);
-        const format = getProjectFormat(packagePath);
-        if (format && session.location.kind === 'capty-package') {
-          session.location = { ...session.location, format };
-        }
-        return { status: 'saved', revision: nextProject.revision };
-      } catch (error) {
-        return {
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
+        if (result.status === 'failed') throw new Error(result.error);
+        committed = true;
+        return this.readActiveProject(session);
+      };
+      return operation(this.readActiveProject(session), commitProject);
     });
   }
 

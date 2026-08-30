@@ -1,5 +1,7 @@
+import { calculateDeviceFrameLayout } from './device-frame-layout';
 import { cloneImmutable, freezeImmutable } from './immutable';
 import type { CompositionSpec, EvaluatedProject } from './types';
+import { calculateWallpaperDimensions } from '@/types/video-wallpaper';
 import type { MediaAsset } from '@/types/editor-v2';
 
 const DEFAULT_CANVAS_WIDTH = 1920;
@@ -49,7 +51,32 @@ export const createCompositionSpec = (
         { kind: 'canvas-settings' }
       > => effect.kind === 'canvas-settings' && effect.enabled
     );
-  const dimensions = canvasSettings ?? getFallbackDimensions(project);
+  const sourceDimensions = canvasSettings ?? getFallbackDimensions(project);
+  const wallpaper = [...project.sequence.effects]
+    .reverse()
+    .find(effect => effect.kind === 'wallpaper' && effect.enabled);
+  const deviceFrame = project.sequence.effects.some(
+    effect => effect.kind === 'device-frame' && effect.enabled
+  );
+  const deviceLayout = deviceFrame
+    ? calculateDeviceFrameLayout(
+        sourceDimensions.width,
+        sourceDimensions.height
+      )
+    : null;
+  const framedDimensions = {
+    width: deviceLayout?.frameWidth ?? sourceDimensions.width,
+    height: deviceLayout?.frameHeight ?? sourceDimensions.height,
+  };
+  const dimensions =
+    wallpaper?.kind === 'wallpaper'
+      ? calculateWallpaperDimensions(
+          framedDimensions.width,
+          framedDimensions.height,
+          Math.max(0, wallpaper.padding),
+          canvasSettings?.aspectRatio
+        )
+      : framedDimensions;
 
   return freezeImmutable({
     width: dimensions.width,

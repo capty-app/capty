@@ -11,6 +11,9 @@ import {
   createRemoveTransitionCommand,
   createUpdateAssetCommand,
   createUpdateClipCommand,
+  createUpdateClipEffectCommand,
+  createUpdatePreRollCommand,
+  createUpdateSequenceEffectCommand,
 } from '@/editor-v2/commands/operations';
 import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
 import type { EditorProjectV2, ImageClip } from '@/types/editor-v2';
@@ -214,6 +217,95 @@ describe('Editor V2 basic document operations', () => {
     expect(() =>
       executeEditorCommand(project, createRemoveAssetCommand('legacy'))
     ).toThrow('still in use');
+  });
+
+  it('updates clip and sequence effects with exact undo', () => {
+    let project = executeEditorCommand(
+      createProject(),
+      createAddClipCommand(createClip('clip', 0))
+    ).document;
+    const opacity = {
+      id: 'opacity',
+      kind: 'opacity' as const,
+      enabled: true,
+      opacity: 1,
+    };
+    project = executeEditorCommand(
+      project,
+      createAddClipEffectCommand('clip', opacity)
+    ).document;
+    project.sequence.effects.push({
+      id: 'wallpaper',
+      kind: 'wallpaper',
+      enabled: true,
+      background: { kind: 'none' },
+      padding: 0,
+      corners: 0,
+      shadow: 0,
+    });
+
+    const clipUpdate = executeEditorCommand(
+      project,
+      createUpdateClipEffectCommand('clip', 'opacity', {
+        ...opacity,
+        opacity: 0.25,
+      })
+    );
+    expect(clipUpdate.document.sequence.clips.clip.effects[0]).toMatchObject({
+      opacity: 0.25,
+    });
+    expect(
+      executeEditorCommand(clipUpdate.document, clipUpdate.inverse).document
+        .sequence.clips.clip.effects[0]
+    ).toEqual(opacity);
+
+    const sequenceUpdate = executeEditorCommand(
+      project,
+      createUpdateSequenceEffectCommand('wallpaper', {
+        ...project.sequence.effects[0],
+        padding: 20,
+      })
+    );
+    expect(sequenceUpdate.document.sequence.effects[0]).toMatchObject({
+      padding: 20,
+    });
+    expect(
+      executeEditorCommand(sequenceUpdate.document, sequenceUpdate.inverse)
+        .document.sequence.effects[0]
+    ).toEqual(project.sequence.effects[0]);
+  });
+
+  it('updates semantic First Frame pre-roll with exact undo', () => {
+    const project = createProject();
+    const updated = executeEditorCommand(
+      project,
+      createUpdatePreRollCommand({
+        kind: 'output-frame-count',
+        assetId: 'image',
+        frames: 3,
+        fit: 'stretch',
+      })
+    );
+    expect(updated.document.sequence.preRoll).toEqual({
+      kind: 'output-frame-count',
+      assetId: 'image',
+      frames: 3,
+      fit: 'stretch',
+    });
+    expect(
+      executeEditorCommand(updated.document, updated.inverse).document
+    ).toEqual(project);
+    expect(() =>
+      executeEditorCommand(
+        project,
+        createUpdatePreRollCommand({
+          kind: 'output-frame-count',
+          assetId: 'missing',
+          frames: 1,
+          fit: 'cover',
+        })
+      )
+    ).toThrow('image asset');
   });
 
   it('validates transition track state and keeps removal undoable', () => {

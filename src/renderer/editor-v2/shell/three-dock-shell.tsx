@@ -176,6 +176,7 @@ export default function ThreeDockShell({
             project={project}
             currentTick={playheadTick}
             onCurrentTickChange={setPlayheadTick}
+            directManipulation
           />
           {!workspace.rightDock.collapsed ? (
             <>
@@ -201,7 +202,10 @@ export default function ThreeDockShell({
                 onResizeEnd={onWorkspaceCommit}
               />
               <div className="shrink-0" style={{ width: rightDockSize }}>
-                <InspectorDock onCollapse={toggleRight} />
+                <InspectorDock
+                  projectToken={projectToken}
+                  onCollapse={toggleRight}
+                />
               </div>
             </>
           ) : null}

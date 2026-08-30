@@ -28,20 +28,27 @@ describe('Editor V2 preload', () => {
     expect(Object.keys(bridge).sort()).toEqual([
       'acknowledgeFlush',
       'createProject',
+      'deleteData',
+      'generateSubtitles',
       'getMediaStatus',
+      'importCursor',
       'importMedia',
+      'importSubtitles',
       'onFlushRequest',
       'onLoad',
       'onLoadError',
       'onMutationUnfreeze',
+      'readData',
       'relinkMedia',
       'reloadProject',
       'removeManagedMedia',
+      'resetData',
       'revealMedia',
       'saveProject',
       'saveProjectCopy',
       'saveWorkspace',
       'switchVersion',
+      'writeData',
     ]);
     expect(exposeInMainWorld).not.toHaveBeenCalledWith(
       'ipcRenderer',
@@ -63,6 +70,13 @@ describe('Editor V2 preload', () => {
       relinkMedia: (value: unknown) => Promise<unknown>;
       revealMedia: (value: unknown) => Promise<unknown>;
       removeManagedMedia: (value: unknown) => Promise<unknown>;
+      readData: (value: unknown) => Promise<unknown>;
+      writeData: (value: unknown) => Promise<unknown>;
+      deleteData: (value: unknown) => Promise<unknown>;
+      resetData: (value: unknown) => Promise<unknown>;
+      importCursor: (value: unknown) => Promise<unknown>;
+      importSubtitles: (value: unknown) => Promise<unknown>;
+      generateSubtitles: (value: unknown) => Promise<unknown>;
       switchVersion: (value: unknown) => Promise<unknown>;
     };
     const cleanup = bridge.onLoad(() => undefined);
@@ -117,6 +131,34 @@ describe('Editor V2 preload', () => {
     });
     await bridge.removeManagedMedia({ projectToken: 'token' });
     expect(invoke).toHaveBeenCalledWith('editor-v2:media:remove-managed', {
+      projectToken: 'token',
+    });
+    await bridge.readData({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:read', {
+      projectToken: 'token',
+    });
+    await bridge.writeData({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:write', {
+      projectToken: 'token',
+    });
+    await bridge.deleteData({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:delete', {
+      projectToken: 'token',
+    });
+    await bridge.resetData({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:reset', {
+      projectToken: 'token',
+    });
+    await bridge.importCursor({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:import-cursor', {
+      projectToken: 'token',
+    });
+    await bridge.importSubtitles({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:import-subtitles', {
+      projectToken: 'token',
+    });
+    await bridge.generateSubtitles({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:data:generate-subtitles', {
       projectToken: 'token',
     });
     await bridge.switchVersion({ targetVersion: 'v1' });

@@ -8,6 +8,7 @@ import {
   ensureWhisperReady,
   getAvailableModels,
 } from '@/main/utils/whisper';
+import { parseSrtToSubtitleData } from '@/editor-v1/subtitle-parser';
 import { transcribeAudio } from '@/main/transcription/whisper-transcribe';
 import type {
   SubtitleData,
@@ -15,43 +16,6 @@ import type {
   SubtitleGenerationOptions,
 } from '@/types/subtitle';
 import { validateSubtitleData } from '@/types/subtitle';
-
-function parseSrtTimestamp(timestamp: string): number {
-  const [time, ms] = timestamp.split(',');
-  const [hours, minutes, seconds] = time.split(':').map(Number);
-  return hours * 3600 + minutes * 60 + seconds + Number(ms) / 1000;
-}
-
-function parseSrtToSubtitleData(content: string): SubtitleData {
-  const blocks = content.trim().split(/\n\n+/);
-  const segments: SubtitleData['segments'] = [];
-
-  for (const block of blocks) {
-    const lines = block.split('\n');
-    if (lines.length < 3) continue;
-
-    const timeLine = lines[1];
-    const timeMatch = timeLine.match(
-      /(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/
-    );
-    if (!timeMatch) continue;
-
-    const start = parseSrtTimestamp(timeMatch[1]);
-    const end = parseSrtTimestamp(timeMatch[2]);
-    const text = lines.slice(2).join(' ').trim();
-
-    segments.push({ start, end, text });
-  }
-
-  return {
-    segments,
-    meta: {
-      generatedAt: new Date().toISOString(),
-      language: 'en',
-      model: 'imported',
-    },
-  };
-}
 
 export function registerSubtitleHandlers(): void {
   ipcMain.handle(
@@ -213,7 +177,7 @@ export function registerSubtitleHandlers(): void {
 
         let parsed: unknown;
         if (filePath.endsWith('.srt')) {
-          parsed = parseSrtToSubtitleData(content);
+          parsed = parseSrtToSubtitleData(content, new Date().toISOString());
         } else {
           parsed = JSON.parse(content);
         }

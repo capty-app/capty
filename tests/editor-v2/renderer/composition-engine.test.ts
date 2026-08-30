@@ -184,7 +184,194 @@ describe('EditorV2CompositionEngine', () => {
 
     expect(context.createLinearGradient).toHaveBeenCalled();
     expect(gradient.addColorStop).toHaveBeenCalledTimes(2);
-    expect(context.fillRect).toHaveBeenCalledWith(0, 0, 1920, 1080);
+    expect(context.fillRect).toHaveBeenCalledWith(0, 0, 1991, 1120);
+  });
+
+  it('renders sequence foreground effects across media gaps', async () => {
+    const base = evaluateSequence(createProject(), 100);
+    const evaluation = {
+      ...base,
+      layers: [],
+      composition: {
+        ...base.composition,
+        effects: [
+          ...base.composition.effects,
+          {
+            id: 'drawing',
+            kind: 'annotation' as const,
+            enabled: true,
+            timeDomain: 'output-timeline' as const,
+            range: { start: 0, end: 1_000 },
+            canvasWidth: 1920,
+            canvasHeight: 1080,
+            annotations: [],
+          },
+        ],
+      },
+    };
+    const sources: CompositionSourceProvider = {
+      getSource: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const effects = {
+      renderSequenceBackground: vi.fn(),
+      renderSequenceForeground: vi.fn(),
+    };
+    const engine = new EditorV2CompositionEngine(sources, effects);
+    const { canvas, context } = createCanvas();
+
+    await engine.render(canvas, evaluation);
+
+    expect(sources.getSource).not.toHaveBeenCalled();
+    expect(effects.renderSequenceForeground).toHaveBeenCalledWith({
+      context,
+      evaluation,
+    });
+  });
+
+  it('renders First Frame without wallpaper or device-frame composition', async () => {
+    const project = createProject();
+    project.sequence.preRoll = {
+      kind: 'output-frame-count',
+      assetId: 'image',
+      frames: 1,
+      fit: 'cover',
+    };
+    project.sequence.effects.push(
+      {
+        id: 'wallpaper',
+        kind: 'wallpaper',
+        enabled: true,
+        background: { kind: 'image', assetId: 'image' },
+        padding: 20,
+        corners: 10,
+        shadow: 10,
+      },
+      {
+        id: 'device',
+        kind: 'device-frame',
+        enabled: true,
+        frame: 'ios-device',
+      }
+    );
+    const evaluation = evaluateSequence(project, 0);
+    const sources: CompositionSourceProvider = {
+      getSource: vi.fn().mockResolvedValue({
+        status: 'ready',
+        source: {} as CanvasImageSource,
+        width: 800,
+        height: 600,
+      }),
+      dispose: vi.fn(),
+    };
+    const effects = {
+      renderSequenceBackground: vi.fn(),
+      renderDeviceFramedLayer: vi.fn(),
+      renderSequenceForeground: vi.fn(),
+    };
+    const engine = new EditorV2CompositionEngine(sources, effects);
+    const { canvas, context } = createCanvas();
+
+    await engine.render(canvas, evaluation);
+
+    expect(evaluation.layers[0]).toMatchObject({ origin: 'pre-roll' });
+    expect(sources.getSource).toHaveBeenCalledTimes(1);
+    expect(effects.renderSequenceBackground).not.toHaveBeenCalled();
+    expect(effects.renderDeviceFramedLayer).toHaveBeenCalledWith({
+      context,
+      evaluation,
+      layer: evaluation.layers[0],
+      source: expect.objectContaining({ status: 'ready' }),
+    });
+    expect(effects.renderSequenceForeground).toHaveBeenCalledWith({
+      context,
+      evaluation,
+    });
+    expect({
+      fills: vi.mocked(context.fillRect).mock.calls,
+      draws: vi.mocked(context.drawImage).mock.calls,
+      backgroundEffects: effects.renderSequenceBackground.mock.calls,
+      foregroundEffectCount: effects.renderSequenceForeground.mock.calls.length,
+    }).toMatchInlineSnapshot(`
+      {
+        "backgroundEffects": [],
+        "draws": [
+          [
+            {},
+            0,
+            0,
+            800,
+            600,
+            -1022.0000000000001,
+            -766.5,
+            2044.0000000000002,
+            1533,
+          ],
+        ],
+        "fills": [
+          [
+            0,
+            0,
+            2044,
+            1150,
+          ],
+        ],
+        "foregroundEffectCount": 1,
+      }
+    `);
+  });
+
+  it('loads and renders image wallpaper through the authorized source provider', async () => {
+    const base = evaluateSequence(createProject(), 100);
+    const evaluation = {
+      ...base,
+      layers: [],
+      composition: {
+        ...base.composition,
+        effects: [
+          ...base.composition.effects,
+          {
+            id: 'wallpaper',
+            kind: 'wallpaper' as const,
+            enabled: true,
+            background: { kind: 'image' as const, assetId: 'image' },
+            padding: 0,
+            corners: 0,
+            shadow: 0,
+          },
+        ],
+      },
+    };
+    const drawable = {} as CanvasImageSource;
+    const sources: CompositionSourceProvider = {
+      getSource: vi.fn().mockResolvedValue({
+        status: 'ready',
+        source: drawable,
+        width: 800,
+        height: 600,
+      }),
+      dispose: vi.fn(),
+    };
+    const effects = { renderSequenceBackground: vi.fn() };
+    const engine = new EditorV2CompositionEngine(sources, effects);
+    const { canvas, context } = createCanvas();
+
+    await engine.render(canvas, evaluation);
+
+    expect(sources.getSource).toHaveBeenCalledWith(
+      expect.objectContaining({ layerId: 'wallpaper:image', assetId: 'image' })
+    );
+    expect(context.drawImage).toHaveBeenCalledWith(
+      drawable,
+      0,
+      0,
+      800,
+      600,
+      0,
+      -180,
+      1920,
+      1440
+    );
   });
 
   it('reports missing and decode-error sources without remapping plans', async () => {

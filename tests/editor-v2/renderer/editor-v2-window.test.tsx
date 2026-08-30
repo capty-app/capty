@@ -143,14 +143,16 @@ describe('Editor V2 window', () => {
     expect(rendered.container.textContent).toContain('/Media/Source.capty');
   });
 
-  it('surfaces managed-media recovery warnings from project open', () => {
+  it('surfaces managed-media recovery warnings from project open', async () => {
     rendered = render(<EditorV2Window />);
-    act(() =>
+    await act(async () => {
       loadListener?.({
         ...payload,
         mediaRecoveryWarnings: ['Media cleanup will retry after reopen'],
-      })
-    );
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(rendered.container.textContent).toContain(
       'Media cleanup will retry after reopen'

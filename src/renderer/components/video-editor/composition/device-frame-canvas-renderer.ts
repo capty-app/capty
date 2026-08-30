@@ -1,110 +1,21 @@
+import {
+  calculateDeviceFrameLayout,
+  getDeviceFrameConfig,
+  type DeviceFrameConfig,
+  type DeviceFrameLayout,
+} from '@/editor-v2/timeline/device-frame-layout';
 import type { Context2D } from './types';
 import type { ShadowConfig } from './wallpaper-canvas-renderer';
 
-export interface DeviceFrameLayout {
-  frameWidth: number;
-  frameHeight: number;
-  screenX: number;
-  screenY: number;
-  screenWidth: number;
-  screenHeight: number;
-  screenCornerRadius: number;
-  deviceType: 'iphone' | 'ipad';
-}
-
-type DeviceConfig = {
-  bezelRatio: number;
-  deviceCornerRatio: number;
-  screenCornerRatio: number;
-  sideButtonWidthRatio: number;
-  dynamicIslandWidthRatio: number;
-  dynamicIslandHeightRatio: number;
-  dynamicIslandTopRatio: number;
-  hasDynamicIsland: boolean;
-};
-
-const IPHONE_CONFIG: DeviceConfig = {
-  bezelRatio: 0.01,
-  deviceCornerRatio: 0.065,
-  screenCornerRatio: 0.055,
-  sideButtonWidthRatio: 0.006,
-  dynamicIslandWidthRatio: 0.25,
-  dynamicIslandHeightRatio: 0.03,
-  dynamicIslandTopRatio: 0.02,
-  hasDynamicIsland: true,
-};
-
-const IPAD_CONFIG: DeviceConfig = {
-  bezelRatio: 0.008,
-  deviceCornerRatio: 0.035,
-  screenCornerRatio: 0.025,
-  sideButtonWidthRatio: 0.004,
-  dynamicIslandWidthRatio: 0,
-  dynamicIslandHeightRatio: 0,
-  dynamicIslandTopRatio: 0,
-  hasDynamicIsland: false,
-};
+export { calculateDeviceFrameLayout };
+export type { DeviceFrameLayout };
 
 const DEVICE_COLOR = '#1a1a1a';
 const DEVICE_EDGE_COLOR = '#2a2a2a';
 const DYNAMIC_ISLAND_COLOR = '#000000';
 
-const IPHONE_MAX_ASPECT_RATIO = 0.55;
-const IPAD_MIN_ASPECT_RATIO = 0.6;
-
 let frameOffscreen: OffscreenCanvas | null = null;
 let frameOffscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
-
-function getDeviceConfig(
-  videoWidth: number,
-  videoHeight: number
-): {
-  config: DeviceConfig;
-  deviceType: 'iphone' | 'ipad';
-} {
-  const aspectRatio = videoWidth / videoHeight;
-
-  if (aspectRatio <= IPHONE_MAX_ASPECT_RATIO) {
-    return { config: IPHONE_CONFIG, deviceType: 'iphone' };
-  }
-
-  if (aspectRatio >= IPAD_MIN_ASPECT_RATIO) {
-    return { config: IPAD_CONFIG, deviceType: 'ipad' };
-  }
-
-  const isLikelyIPad = videoWidth >= 1400;
-  return {
-    config: isLikelyIPad ? IPAD_CONFIG : IPHONE_CONFIG,
-    deviceType: isLikelyIPad ? 'ipad' : 'iphone',
-  };
-}
-
-export function calculateDeviceFrameLayout(
-  videoWidth: number,
-  videoHeight: number
-): DeviceFrameLayout {
-  const { config, deviceType } = getDeviceConfig(videoWidth, videoHeight);
-  const bezel = Math.round(
-    Math.max(videoWidth, videoHeight) * config.bezelRatio
-  );
-  const frameWidth = videoWidth + bezel * 2;
-  const frameHeight = videoHeight + bezel * 2;
-
-  const screenCornerRadius = Math.round(
-    Math.max(frameWidth, frameHeight) * config.screenCornerRatio
-  );
-
-  return {
-    frameWidth,
-    frameHeight,
-    screenX: bezel,
-    screenY: bezel,
-    screenWidth: videoWidth,
-    screenHeight: videoHeight,
-    screenCornerRadius,
-    deviceType,
-  };
-}
 
 export function renderDeviceFrame(
   ctx: Context2D,
@@ -123,7 +34,7 @@ export function renderDeviceFrame(
     deviceType,
   } = layout;
 
-  const config = deviceType === 'ipad' ? IPAD_CONFIG : IPHONE_CONFIG;
+  const config = getDeviceFrameConfig(deviceType);
 
   const paddedWidth = Math.ceil(
     frameWidth + frameWidth * config.sideButtonWidthRatio
@@ -209,7 +120,7 @@ function drawSideButtons(
   width: number,
   height: number,
   cornerRadius: number,
-  config: DeviceConfig
+  config: DeviceFrameConfig
 ): void {
   const buttonWidth = Math.round(width * config.sideButtonWidthRatio);
   const buttonRadius = buttonWidth / 2;
@@ -283,7 +194,7 @@ function drawDynamicIsland(
   ctx: Context2D,
   frameWidth: number,
   frameHeight: number,
-  config: DeviceConfig
+  config: DeviceFrameConfig
 ): void {
   const islandWidth = Math.round(frameWidth * config.dynamicIslandWidthRatio);
   const islandHeight = Math.round(

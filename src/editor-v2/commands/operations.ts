@@ -6,6 +6,7 @@ import type {
   EditorTrack,
   EditorTransition,
   MediaAsset,
+  OutputFrameCountPreRoll,
   SequenceEffect,
 } from '@/types/editor-v2';
 
@@ -349,6 +350,39 @@ export const createAddClipEffectCommand = (
   },
 });
 
+export const createUpdateClipEffectCommand = (
+  clipId: string,
+  effectId: string,
+  replacement: ClipEffect
+): EditorCommand => ({
+  id: 'effect.update',
+  label: 'Update effect',
+  apply(document) {
+    const clip = document.sequence.clips[clipId];
+    const effect = clip?.effects.find(current => current.id === effectId);
+    if (!clip || !effect) {
+      throw new EditorCommandError(`Effect ${effectId} does not exist`);
+    }
+    const track = document.sequence.tracks[clip.trackId];
+    if (track.locked) {
+      throw new EditorCommandError(`Track ${track.id} is locked`);
+    }
+    if (replacement.id !== effectId || replacement.kind !== effect.kind) {
+      throw new EditorCommandError('Effect identity cannot be changed');
+    }
+    const next = cloneDocument(document);
+    const index = next.sequence.clips[clipId].effects.findIndex(
+      current => current.id === effectId
+    );
+    next.sequence.clips[clipId].effects[index] = structuredClone(replacement);
+    return {
+      document: next,
+      affectedIds: [clipId, effectId],
+      inverse: createUpdateClipEffectCommand(clipId, effectId, effect),
+    };
+  },
+});
+
 export const createRemoveClipEffectCommand = (
   clipId: string,
   effectId: string
@@ -376,6 +410,44 @@ export const createRemoveClipEffectCommand = (
   },
 });
 
+export const createUpdatePreRollCommand = (
+  replacement?: OutputFrameCountPreRoll
+): EditorCommand => ({
+  id: 'sequence.pre-roll.update',
+  label: replacement ? 'Update First Frame' : 'Remove First Frame',
+  apply(document) {
+    if (replacement) {
+      const asset = document.assets[replacement.assetId];
+      if (asset?.kind !== 'image') {
+        throw new EditorCommandError(
+          'First Frame must reference an image asset'
+        );
+      }
+      if (
+        !Number.isSafeInteger(replacement.frames) ||
+        replacement.frames <= 0
+      ) {
+        throw new EditorCommandError('First Frame duration is invalid');
+      }
+    }
+    const previous = document.sequence.preRoll;
+    const next = cloneDocument(document);
+    if (replacement) {
+      next.sequence.preRoll = structuredClone(replacement);
+    } else {
+      delete next.sequence.preRoll;
+    }
+    return {
+      document: next,
+      affectedIds: [
+        'sequence.pre-roll',
+        ...(replacement ? [replacement.assetId] : []),
+      ],
+      inverse: createUpdatePreRollCommand(previous),
+    };
+  },
+});
+
 export const createAddSequenceEffectCommand = (
   effect: SequenceEffect
 ): EditorCommand => ({
@@ -391,6 +463,35 @@ export const createAddSequenceEffectCommand = (
       document: next,
       affectedIds: [effect.id],
       inverse: createRemoveSequenceEffectCommand(effect.id),
+    };
+  },
+});
+
+export const createUpdateSequenceEffectCommand = (
+  effectId: string,
+  replacement: SequenceEffect
+): EditorCommand => ({
+  id: 'sequence-effect.update',
+  label: 'Update canvas effect',
+  apply(document) {
+    const effect = document.sequence.effects.find(
+      current => current.id === effectId
+    );
+    if (!effect) {
+      throw new EditorCommandError(`Effect ${effectId} does not exist`);
+    }
+    if (replacement.id !== effectId || replacement.kind !== effect.kind) {
+      throw new EditorCommandError('Effect identity cannot be changed');
+    }
+    const next = cloneDocument(document);
+    const index = next.sequence.effects.findIndex(
+      current => current.id === effectId
+    );
+    next.sequence.effects[index] = structuredClone(replacement);
+    return {
+      document: next,
+      affectedIds: [effectId],
+      inverse: createUpdateSequenceEffectCommand(effectId, effect),
     };
   },
 });

@@ -312,6 +312,29 @@ describe('Editor V2 project service', () => {
     service.release(reopened.session);
   });
 
+  it('commits project mutations inside one non-reentrant queue operation', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Mutation.capty');
+    await fs.mkdir(packagePath);
+    await writeProject(packagePath);
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', undefined);
+
+    const mutated = await service.runProjectMutation(
+      opened.session,
+      0,
+      async (active, commitProject) =>
+        commitProject({ ...active, name: 'Data mutation' })
+    );
+
+    expect(mutated).toMatchObject({ name: 'Data mutation', revision: 1 });
+    expect(service.readActiveProject(opened.session)).toMatchObject({
+      name: 'Data mutation',
+      revision: 1,
+    });
+    service.release(opened.session);
+  });
+
   it('serializes saves and never overwrites a stale revision', async () => {
     const root = await createTemporaryDirectory();
     const packagePath = path.join(root, 'Project.capty');

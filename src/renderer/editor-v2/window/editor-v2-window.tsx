@@ -4,6 +4,10 @@ import { Button } from '@/renderer/components/ui/button';
 import { canShowEditorVersionSwitch } from '../shell/editor-version-switch';
 import ThreeDockShell from '../shell/three-dock-shell';
 import EditorProvider from '../store/editor-provider';
+import {
+  ProjectDataMutationProvider,
+  type ProjectDataMutationRunner,
+} from '../store/project-data-mutation-context';
 import { useEditorAutosave } from '../store/use-autosave';
 import { useEditorStore } from '../store/use-editor-store';
 import type {
@@ -332,25 +336,64 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
     ]
   );
 
+  const runProjectDataMutation = useCallback<ProjectDataMutationRunner>(
+    async operation => {
+      const finishOperation = beginMediaOperation();
+      if (!finishOperation) {
+        return { status: 'failed', error: 'Project operations are frozen' };
+      }
+      workspaceFrozenRef.current = true;
+      store.freeze();
+      try {
+        const projectRevision = await flushProject();
+        const result = await operation(projectRevision);
+        if (result.status === 'updated') {
+          store.replaceFromDisk(result.project);
+          resetDiskRevision(result.revision);
+          workspaceFrozenRef.current = false;
+          return result;
+        }
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        if (result.status === 'stale') {
+          store.acceptSave(store.mutationRevision, result);
+        }
+        return result;
+      } catch (reason) {
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        return {
+          status: 'failed',
+          error: reason instanceof Error ? reason.message : String(reason),
+        };
+      } finally {
+        finishOperation();
+      }
+    },
+    [beginMediaOperation, flushProject, resetDiskRevision, store]
+  );
+
   return (
     <>
-      <ThreeDockShell
-        displayName={displayName}
-        displayPath={displayPath}
-        projectToken={payload.projectToken}
-        project={store.document}
-        workspace={workspace}
-        commandBindings={payload.commandBindings}
-        canSwitchVersion={canShowEditorVersionSwitch(
-          payload.canSwitchEditorVersion
-        )}
-        onWorkspaceChange={updateWorkspace}
-        onWorkspaceCommit={commitWorkspace}
-        onRemoveManaged={removeManaged}
-        onMediaOperationStart={beginMediaOperation}
-        operationsFrozen={mediaOperationsFrozen}
-        onSwitchVersion={switchVersion}
-      />
+      <ProjectDataMutationProvider value={runProjectDataMutation}>
+        <ThreeDockShell
+          displayName={displayName}
+          displayPath={displayPath}
+          projectToken={payload.projectToken}
+          project={store.document}
+          workspace={workspace}
+          commandBindings={payload.commandBindings}
+          canSwitchVersion={canShowEditorVersionSwitch(
+            payload.canSwitchEditorVersion
+          )}
+          onWorkspaceChange={updateWorkspace}
+          onWorkspaceCommit={commitWorkspace}
+          onRemoveManaged={removeManaged}
+          onMediaOperationStart={beginMediaOperation}
+          operationsFrozen={mediaOperationsFrozen}
+          onSwitchVersion={switchVersion}
+        />
+      </ProjectDataMutationProvider>
       {requiresProjectCreation ? (
         <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-6">
           <div

@@ -8,7 +8,9 @@ import { fingerprintFile } from '@/main/editor-v2/data/legacy-data-reader';
 import { writeJsonAtomic } from '@/main/editor-v2/project/atomic-project-writer';
 import { getEditorV2ProjectPaths } from '@/main/editor-v2/project/project-paths';
 import {
+  createEditorData,
   deleteEditorData,
+  readEditorData,
   recoverOrphanEditorData,
   resetEditorDataToV1,
   writeEditorDataCopyOnWrite,
@@ -76,6 +78,36 @@ afterEach(async () => {
 });
 
 describe('Editor V2 data copy-on-write', () => {
+  it('reads only active fingerprint-matched validated data', async () => {
+    const packagePath = await createTemporaryPackage();
+    const cursorPath = path.join(packagePath, 'cursor.json');
+    const value = {
+      recordingArea: { width: 1920, height: 1080 },
+      events: [{ timestamp: 0, x: 0.5, y: 0.5, type: 'move' }],
+      meta: {
+        startTime: '2026-08-30T00:00:00.000Z',
+        duration: 1,
+        sampleRate: 60,
+      },
+    };
+    await fs.writeFile(cursorPath, JSON.stringify(value));
+    const locator: V1ReadOnlyDataLocator = {
+      kind: 'v1-read-only',
+      relativePath: 'cursor.json',
+      fingerprint: await fingerprintFile(cursorPath),
+    };
+    const project = createProject(locator);
+
+    await expect(
+      readEditorData(packagePath, project, 'cursor', locator)
+    ).resolves.toEqual({ kind: 'cursor', value });
+
+    await fs.writeFile(cursorPath, JSON.stringify({ ...value, events: [] }));
+    await expect(
+      readEditorData(packagePath, project, 'cursor', locator)
+    ).rejects.toThrow('changed outside Capty');
+  });
+
   it('writes only V2 data and preserves every original V1 byte', async () => {
     const packagePath = await createTemporaryPackage();
     const cursorPath = path.join(packagePath, 'cursor.json');
@@ -129,6 +161,109 @@ describe('Editor V2 data copy-on-write', () => {
     );
   });
 
+  it('creates generated data without changing original V1 bytes', async () => {
+    const packagePath = await createTemporaryPackage();
+    const cursorPath = path.join(packagePath, 'cursor.json');
+    const statePath = path.join(packagePath, 'state.json');
+    await fs.writeFile(cursorPath, '{"legacy":true}\n');
+    await fs.writeFile(statePath, '{"version":1}\n');
+    const before = await Promise.all([
+      fingerprintFile(cursorPath),
+      fingerprintFile(statePath),
+    ]);
+    const locator: V1ReadOnlyDataLocator = {
+      kind: 'v1-read-only',
+      relativePath: 'cursor.json',
+      fingerprint: before[0],
+    };
+    const project = createProject(locator);
+    const subtitles = {
+      segments: [{ start: 0, end: 1, text: 'Hello' }],
+      meta: {
+        generatedAt: '2026-08-30T00:00:00.000Z',
+        language: 'en',
+        model: 'imported' as const,
+      },
+    };
+
+    const created = await createEditorData({
+      packagePath,
+      project,
+      assetId: 'recording-asset',
+      kind: 'subtitles',
+      value: subtitles,
+      attach: (current, dataLocator) => {
+        const next = structuredClone(current);
+        const asset = next.assets['recording-asset'];
+        if (asset.kind !== 'capty-recording') return next;
+        asset.sources.subtitles = {
+          locator: dataLocator,
+          recordingOffsetTicks: 0,
+        };
+        return next;
+      },
+      commitProject: async next => next,
+    });
+
+    expect(created.locator.relativePath).toMatch(
+      /^data\/recording-asset\/subtitles-[a-f0-9]{16}\.json$/
+    );
+    expect(
+      await readEditorData(
+        packagePath,
+        created.project,
+        'subtitles',
+        created.locator
+      )
+    ).toEqual({ kind: 'subtitles', value: subtitles });
+    const after = await Promise.all([
+      fingerprintFile(cursorPath),
+      fingerprintFile(statePath),
+    ]);
+    expect(after).toEqual(before);
+  });
+
+  it('binds mutations to the canonical asset, kind, and complete locator', async () => {
+    const packagePath = await createTemporaryPackage();
+    const cursorPath = path.join(packagePath, 'cursor.json');
+    await fs.writeFile(cursorPath, '{"legacy":true}\n');
+    const locator: V1ReadOnlyDataLocator = {
+      kind: 'v1-read-only',
+      relativePath: 'cursor.json',
+      fingerprint: await fingerprintFile(cursorPath),
+    };
+    const project = createProject(locator);
+
+    await expect(
+      readEditorData(packagePath, project, 'subtitles', locator)
+    ).rejects.toThrow('data kind');
+    await expect(
+      writeEditorDataCopyOnWrite({
+        packagePath,
+        project,
+        assetId: 'missing',
+        kind: 'cursor',
+        expectedLocator: locator,
+        value: { events: [] },
+        commitProject: async next => next,
+      })
+    ).rejects.toThrow('active asset data');
+    await expect(
+      writeEditorDataCopyOnWrite({
+        packagePath,
+        project,
+        assetId: 'recording-asset',
+        kind: 'cursor',
+        expectedLocator: {
+          ...locator,
+          fingerprint: { ...locator.fingerprint, byteLength: 999 },
+        },
+        value: { events: [] },
+        commitProject: async next => next,
+      })
+    ).rejects.toThrow('active asset data');
+  });
+
   it('resets and deletes only V2 references while preserving V1 input', async () => {
     const packagePath = await createTemporaryPackage();
     const cursorPath = path.join(packagePath, 'cursor.json');
@@ -154,6 +289,8 @@ describe('Editor V2 data copy-on-write', () => {
     const reset = await resetEditorDataToV1({
       packagePath,
       project: edited.project,
+      assetId: 'recording-asset',
+      kind: 'cursor',
       expectedLocator: edited.locator,
       commitProject: async next => next,
     });
@@ -166,6 +303,8 @@ describe('Editor V2 data copy-on-write', () => {
     const deleted = await deleteEditorData({
       packagePath,
       project: reset,
+      assetId: 'recording-asset',
+      kind: 'cursor',
       expectedLocator: locator,
       commitProject: async next => next,
     });
@@ -332,10 +471,12 @@ describe('Editor V2 data copy-on-write', () => {
       resetEditorDataToV1({
         packagePath,
         project,
+        assetId: 'recording-asset',
+        kind: 'cursor',
         expectedLocator: edited.locator,
         commitProject: async next => next,
       })
-    ).rejects.toThrow('Expected data locator is not active in the project');
+    ).rejects.toThrow('active asset data');
     await expect(fs.access(activePath)).resolves.toBeUndefined();
   });
 

@@ -4,6 +4,12 @@ import type {
   EditorV2Bridge,
   EditorV2CreateProjectRequest,
   EditorV2CreateProjectResult,
+  EditorV2DataCreateRequest,
+  EditorV2DataMutationRequest,
+  EditorV2DataMutationResult,
+  EditorV2DataReadResult,
+  EditorV2DataRequest,
+  EditorV2DataWriteRequest,
   EditorV2FlushRequest,
   EditorV2FlushResult,
   EditorV2LoadErrorPayload,
@@ -24,6 +30,7 @@ import type {
   EditorV2SaveCopyResult,
   EditorV2SaveRequest,
   EditorV2SaveResult,
+  EditorV2SubtitleGenerateRequest,
   EditorV2WorkspaceSaveRequest,
   EditorV2WorkspaceSaveResult,
   EditorVersionSwitchRequest,
@@ -128,6 +135,48 @@ const bridge: EditorV2Bridge = {
       'editor-v2:media:remove-managed',
       request
     ) as Promise<EditorV2ManagedMediaRemoveResult>;
+  },
+  readData(request: EditorV2DataRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:read',
+      request
+    ) as Promise<EditorV2DataReadResult>;
+  },
+  writeData(request: EditorV2DataWriteRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:write',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
+  },
+  deleteData(request: EditorV2DataMutationRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:delete',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
+  },
+  resetData(request: EditorV2DataMutationRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:reset',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
+  },
+  importCursor(request: EditorV2DataMutationRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:import-cursor',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
+  },
+  importSubtitles(request: EditorV2DataCreateRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:import-subtitles',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
+  },
+  generateSubtitles(request: EditorV2SubtitleGenerateRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:data:generate-subtitles',
+      request
+    ) as Promise<EditorV2DataMutationResult>;
   },
   switchVersion(request: EditorVersionSwitchRequest) {
     return ipcRenderer.invoke(

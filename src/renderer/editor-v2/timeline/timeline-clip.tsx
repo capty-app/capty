@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronRight } from 'lucide-react';
 
 import TimelineWaveform from './timeline-waveform';
 import type { EditorClip, MediaAssetStatus } from '@/types/editor-v2';
@@ -8,7 +9,10 @@ interface TimelineClipProps {
   status?: MediaAssetStatus;
   selected: boolean;
   pixelsPerTick: number;
+  outputOffsetTicks: number;
   onSelect: (additive: boolean) => void;
+  effectsExpanded: boolean;
+  onEffectsToggle: () => void;
   onGestureStart: (
     event: React.PointerEvent,
     action: 'move' | 'trim-start' | 'trim-end'
@@ -20,10 +24,18 @@ export default function TimelineClip({
   status,
   selected,
   pixelsPerTick,
+  outputOffsetTicks,
   onSelect,
+  effectsExpanded,
+  onEffectsToggle,
   onGestureStart,
 }: TimelineClipProps) {
-  const left = clip.timelineStart * pixelsPerTick;
+  const laneEffects = clip.effects.filter(effect =>
+    ['zoom', 'annotation', 'subtitle', 'cursor', 'keyboard'].includes(
+      effect.kind
+    )
+  );
+  const left = (clip.timelineStart + outputOffsetTicks) * pixelsPerTick;
   const width = Math.max(8, clip.timelineDuration * pixelsPerTick);
   return (
     <div
@@ -58,6 +70,26 @@ export default function TimelineClip({
       <span className="relative block truncate px-2 py-1 font-medium">
         {clip.name}
       </span>
+      {laneEffects.length > 0 ? (
+        <div className="absolute inset-x-1 bottom-0 z-10">
+          <button
+            type="button"
+            aria-label={`${effectsExpanded ? 'Collapse' : 'Expand'} ${clip.name} effect lane`}
+            aria-expanded={effectsExpanded}
+            className="bg-background/80 flex h-4 max-w-full items-center gap-1 rounded px-1 text-xs"
+            onClick={event => {
+              event.stopPropagation();
+              onEffectsToggle();
+            }}
+            onPointerDown={event => event.stopPropagation()}
+          >
+            <ChevronRight
+              className={`size-3 transition-transform ${effectsExpanded ? 'rotate-90' : ''}`}
+            />
+            {laneEffects.length}
+          </button>
+        </div>
+      ) : null}
       <button
         type="button"
         aria-label={`Trim start of ${clip.name}`}

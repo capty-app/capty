@@ -74,6 +74,7 @@ afterEach(() => {
   rendered?.container.remove();
   rendered = null;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('EditorV2Viewer', () => {
@@ -185,6 +186,73 @@ describe('EditorV2Viewer', () => {
       sourceStreamId: '0:0',
       sourceRole: 'camera-video',
     });
+  });
+
+  it('surfaces actionable effect data read failures', async () => {
+    const project = createProject();
+    project.sequence.clips.clip.effects.push({
+      id: 'cursor',
+      kind: 'cursor',
+      enabled: true,
+      timeDomain: 'asset-source',
+      data: {
+        kind: 'v1-read-only',
+        relativePath: 'cursor.json',
+        fingerprint: { byteLength: 100, sha256: 'cursor' },
+      },
+      style: {
+        size: 200,
+        color: '#000000',
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        smoothing: 0.5,
+        showClickHighlight: true,
+        clickHighlightColor: 'rgba(255, 200, 0, 0.5)',
+        clickHighlightRadius: 30,
+        clickHighlightDuration: 15,
+        hideOnIdle: false,
+        hideOnIdleTimeout: 2,
+        showTrail: false,
+        trailLength: 10,
+        trailOpacityDecay: 0.8,
+        motionBlur: true,
+        motionBlurStrength: 0.5,
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue({}) })
+    );
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn().mockResolvedValue({ width: 1920, height: 1080, close: vi.fn() })
+    );
+    window.editorV2 = {
+      getMediaStatus: vi.fn().mockResolvedValue({
+        status: 'resolved',
+        asset: {
+          assetId: 'image',
+          availability: 'ready',
+          mediaUrl: 'capty-media://image',
+        },
+      }),
+      readData: vi.fn().mockResolvedValue({
+        status: 'failed',
+        error: 'Cursor data changed outside Capty',
+      }),
+    } as unknown as Window['editorV2'];
+    rendered = render(
+      <EditorV2Viewer projectToken="token" project={project} />
+    );
+
+    await flush();
+    await flush();
+    expect(rendered.container.textContent).toContain('Media could not decode');
+    expect(rendered.container.textContent).toContain(
+      'Cursor data changed outside Capty'
+    );
   });
 
   it('shows loading and decode-error states', async () => {

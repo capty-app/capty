@@ -1,6 +1,10 @@
+import type { CursorData } from '../cursor';
+import type { KeyboardData } from '../keyboard';
+import type { SubtitleData } from '../subtitle';
 import type { SerializedCommandBinding } from './commands';
 import type { EditorProjectV2 } from './document';
 import type {
+  EditableDataLocator,
   MediaAsset,
   MediaAssetStatus,
   MediaImportPolicy,
@@ -146,6 +150,50 @@ export type EditorV2ManagedMediaRemoveResult =
   | { status: 'stale'; diskRevision: number }
   | { status: 'failed'; error: string };
 
+export type EditorV2DataKind = 'cursor' | 'keyboard' | 'subtitles';
+
+export type EditorV2DataValue =
+  | { kind: 'cursor'; value: CursorData }
+  | { kind: 'keyboard'; value: KeyboardData }
+  | { kind: 'subtitles'; value: SubtitleData };
+
+export interface EditorV2DataRequest {
+  projectToken: EditorProjectToken;
+  kind: EditorV2DataKind;
+  locator: EditableDataLocator;
+}
+
+export interface EditorV2DataWriteRequest extends EditorV2DataRequest {
+  expectedRevision: number;
+  assetId: string;
+  value: EditorV2DataValue;
+}
+
+export interface EditorV2DataMutationRequest extends EditorV2DataRequest {
+  expectedRevision: number;
+  assetId: string;
+}
+
+export interface EditorV2DataCreateRequest {
+  projectToken: EditorProjectToken;
+  expectedRevision: number;
+  assetId: string;
+}
+
+export interface EditorV2SubtitleGenerateRequest extends EditorV2DataCreateRequest {
+  model: 'base' | 'small' | 'medium';
+  prompt?: string;
+}
+
+export type EditorV2DataReadResult =
+  | { status: 'loaded'; data: EditorV2DataValue }
+  | { status: 'failed'; error: string };
+
+export type EditorV2DataMutationResult =
+  | { status: 'updated'; project: EditorProjectV2; revision: number }
+  | { status: 'stale'; diskRevision: number }
+  | { status: 'failed'; error: string };
+
 export interface EditorV2StartExportRequest {
   projectToken: EditorProjectToken;
   expectedRevision: number;
@@ -194,6 +242,13 @@ export interface EditorV2IpcRequestMap {
   'editor-v2:media:relink': EditorV2MediaAssetRequest;
   'editor-v2:media:reveal': EditorV2MediaAssetRequest;
   'editor-v2:media:remove-managed': EditorV2ManagedMediaRemoveRequest;
+  'editor-v2:data:read': EditorV2DataRequest;
+  'editor-v2:data:write': EditorV2DataWriteRequest;
+  'editor-v2:data:delete': EditorV2DataMutationRequest;
+  'editor-v2:data:reset': EditorV2DataMutationRequest;
+  'editor-v2:data:import-cursor': EditorV2DataMutationRequest;
+  'editor-v2:data:import-subtitles': EditorV2DataCreateRequest;
+  'editor-v2:data:generate-subtitles': EditorV2SubtitleGenerateRequest;
   'editor-v2:export:start': EditorV2StartExportRequest;
   'editor-v2:export:cancel': EditorV2CancelExportRequest;
   'editor-v2:version:switch': EditorVersionSwitchRequest;
@@ -210,6 +265,13 @@ export interface EditorV2IpcResultMap {
   'editor-v2:media:relink': EditorV2MediaRelinkResult;
   'editor-v2:media:reveal': EditorV2MediaRevealResult;
   'editor-v2:media:remove-managed': EditorV2ManagedMediaRemoveResult;
+  'editor-v2:data:read': EditorV2DataReadResult;
+  'editor-v2:data:write': EditorV2DataMutationResult;
+  'editor-v2:data:delete': EditorV2DataMutationResult;
+  'editor-v2:data:reset': EditorV2DataMutationResult;
+  'editor-v2:data:import-cursor': EditorV2DataMutationResult;
+  'editor-v2:data:import-subtitles': EditorV2DataMutationResult;
+  'editor-v2:data:generate-subtitles': EditorV2DataMutationResult;
   'editor-v2:export:start': EditorV2StartExportResult;
   'editor-v2:export:cancel': { accepted: boolean };
   'editor-v2:version:switch': EditorVersionSwitchResult;
@@ -264,6 +326,25 @@ export interface EditorV2Bridge {
   removeManagedMedia: (
     request: EditorV2ManagedMediaRemoveRequest
   ) => Promise<EditorV2ManagedMediaRemoveResult>;
+  readData: (request: EditorV2DataRequest) => Promise<EditorV2DataReadResult>;
+  writeData: (
+    request: EditorV2DataWriteRequest
+  ) => Promise<EditorV2DataMutationResult>;
+  deleteData: (
+    request: EditorV2DataMutationRequest
+  ) => Promise<EditorV2DataMutationResult>;
+  resetData: (
+    request: EditorV2DataMutationRequest
+  ) => Promise<EditorV2DataMutationResult>;
+  importCursor: (
+    request: EditorV2DataMutationRequest
+  ) => Promise<EditorV2DataMutationResult>;
+  importSubtitles: (
+    request: EditorV2DataCreateRequest
+  ) => Promise<EditorV2DataMutationResult>;
+  generateSubtitles: (
+    request: EditorV2SubtitleGenerateRequest
+  ) => Promise<EditorV2DataMutationResult>;
   switchVersion: (
     request: EditorVersionSwitchRequest
   ) => Promise<EditorVersionSwitchResult>;
