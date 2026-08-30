@@ -42,6 +42,7 @@ function StoreHarness({ autosave = false }: { autosave?: boolean }) {
       <span
         data-state
       >{`${store.document.name}:${store.mutationRevision}:${store.persistedMutationRevision}`}</span>
+      <span data-history>{`${store.canUndo}:${store.canRedo}`}</span>
       <button onClick={() => store.execute(renameCommand('One'))}>One</button>
       <button
         onClick={() => {
@@ -54,6 +55,13 @@ function StoreHarness({ autosave = false }: { autosave?: boolean }) {
       <button onClick={store.undo}>Undo</button>
       <button onClick={store.redo}>Redo</button>
       <button onClick={store.freeze}>Freeze</button>
+      <button
+        onClick={() =>
+          store.replaceFromDisk({ ...store.document, name: 'Boundary' })
+        }
+      >
+        History Boundary
+      </button>
       <button
         onClick={() => {
           store.beginTransaction();
@@ -94,6 +102,8 @@ afterEach(() => {
 
 const text = () =>
   rendered!.container.querySelector('[data-state]')!.textContent;
+const historyText = () =>
+  rendered!.container.querySelector('[data-history]')!.textContent;
 const click = (label: string) => {
   const button = [...rendered!.container.querySelectorAll('button')].find(
     candidate => candidate.textContent === label
@@ -134,6 +144,21 @@ describe('Editor V2 root store', () => {
     click('Preview');
     click('Cancel Transaction');
     expect(text()).toBe('Project:2:0');
+  });
+
+  it('clears undo and redo at a committed non-undoable history boundary', () => {
+    rendered = render(
+      <EditorProvider initialDocument={createProject()}>
+        <StoreHarness />
+      </EditorProvider>
+    );
+    click('One');
+    expect(historyText()).toBe('true:false');
+    click('History Boundary');
+    expect(text()).toBe('Boundary:0:0');
+    expect(historyText()).toBe('false:false');
+    click('Undo');
+    expect(text()).toBe('Boundary:0:0');
   });
 
   it('freezes mutation dispatch during close flushing', () => {

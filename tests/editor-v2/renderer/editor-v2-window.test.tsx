@@ -21,6 +21,12 @@ const saveProject = vi.fn();
 const reloadProject = vi.fn();
 const saveProjectCopy = vi.fn();
 const saveWorkspace = vi.fn();
+const createProject = vi.fn();
+const importMedia = vi.fn();
+const getMediaStatus = vi.fn();
+const relinkMedia = vi.fn();
+const revealMedia = vi.fn();
+const removeManagedMedia = vi.fn();
 const acknowledgeFlush = vi.fn();
 const switchVersion = vi.fn();
 
@@ -38,6 +44,8 @@ const payload: EditorV2LoadPayload = {
   }),
   workspace: createDefaultEditorWorkspace(),
   canSwitchEditorVersion: true,
+  requiresProjectCreation: false,
+  mediaRecoveryWarnings: [],
 };
 
 beforeEach(() => {
@@ -49,6 +57,8 @@ beforeEach(() => {
   reloadProject.mockResolvedValue({ status: 'cancelled' });
   saveProjectCopy.mockResolvedValue({ status: 'cancelled' });
   saveWorkspace.mockResolvedValue({ status: 'saved', revision: 1 });
+  createProject.mockResolvedValue({ status: 'cancelled' });
+  getMediaStatus.mockResolvedValue({ status: 'failed', error: 'Unavailable' });
   switchVersion.mockResolvedValue({ status: 'switched' });
   const bridge: EditorV2Bridge = {
     onLoad: listener => {
@@ -74,7 +84,13 @@ beforeEach(() => {
     saveProject,
     reloadProject,
     saveProjectCopy,
+    createProject,
     saveWorkspace,
+    importMedia,
+    getMediaStatus,
+    relinkMedia,
+    revealMedia,
+    removeManagedMedia,
     switchVersion,
   };
   window.editorV2 = bridge;
@@ -89,6 +105,58 @@ afterEach(() => {
 });
 
 describe('Editor V2 window', () => {
+  it('blocks standalone editing until Create Capty Project succeeds', async () => {
+    const standalonePayload = {
+      ...payload,
+      displayName: 'Source',
+      displayPath: '/Media/source.mov',
+      requiresProjectCreation: true,
+    };
+    createProject.mockResolvedValue({
+      status: 'created',
+      project: { ...payload.project, revision: 1 },
+      displayName: 'Source',
+      displayPath: '/Media/Source.capty',
+    });
+    rendered = render(<EditorV2Window />);
+    act(() => loadListener?.(standalonePayload));
+    expect(rendered.container.textContent).toContain(
+      'Create a Capty project to continue'
+    );
+    const create = [...rendered.container.querySelectorAll('button')].find(
+      button => button.textContent?.includes('Create with Copy')
+    );
+    await act(async () => {
+      create?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(createProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectToken: 'token',
+        policy: 'copy',
+      })
+    );
+    expect(rendered.container.textContent).not.toContain(
+      'Create a Capty project to continue'
+    );
+    expect(rendered.container.textContent).toContain('/Media/Source.capty');
+  });
+
+  it('surfaces managed-media recovery warnings from project open', () => {
+    rendered = render(<EditorV2Window />);
+    act(() =>
+      loadListener?.({
+        ...payload,
+        mediaRecoveryWarnings: ['Media cleanup will retry after reopen'],
+      })
+    );
+
+    expect(rendered.container.textContent).toContain(
+      'Media cleanup will retry after reopen'
+    );
+  });
+
   it('renders project open failures instead of waiting indefinitely', () => {
     rendered = render(<EditorV2Window />);
     act(() => loadErrorListener?.({ error: 'Project is corrupt' }));
@@ -116,6 +184,62 @@ describe('Editor V2 window', () => {
           leftDock: expect.objectContaining({ collapsed: true }),
         }),
       })
+    );
+  });
+
+  it('waits for an in-flight media import before acknowledging close flush', async () => {
+    let resolveImport:
+      | ((value: Awaited<ReturnType<EditorV2Bridge['importMedia']>>) => void)
+      | null = null;
+    importMedia.mockReturnValue(
+      new Promise(resolve => {
+        resolveImport = resolve;
+      })
+    );
+    rendered = render(<EditorV2Window />);
+    act(() => loadListener?.(payload));
+    const importButton = [
+      ...rendered.container.querySelectorAll('button'),
+    ].find(button => button.textContent?.includes('Import'));
+    act(() => importButton?.click());
+    act(() => flushListener?.({ requestId: 'flush-media' }));
+    expect(acknowledgeFlush).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveImport?.({
+        status: 'imported',
+        asset: {
+          id: 'managed',
+          kind: 'image',
+          name: 'Managed',
+          locator: {
+            kind: 'managed',
+            relativePath: 'media/managed/image.png',
+          },
+          importedAt: '2026-08-30T00:00:00.000Z',
+          width: 100,
+          height: 100,
+          orientation: 1,
+          defaultStillDurationTicks: 360_000,
+        },
+        media: { assetId: 'managed', availability: 'available' },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+    });
+
+    expect(saveProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project: expect.objectContaining({
+          assets: expect.objectContaining({ managed: expect.any(Object) }),
+        }),
+      })
+    );
+    expect(acknowledgeFlush).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: 'flush-media', status: 'flushed' })
     );
   });
 

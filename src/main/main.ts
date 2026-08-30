@@ -36,6 +36,12 @@ import {
 } from '@/main/capture/screenshot/image-open-batcher';
 import { isSupportedImageFile } from '@/main/utils/image-files';
 import { PROJECT_EXTENSION } from '@/types/video';
+import {
+  installEditorV2MediaProtocol,
+  registerEditorV2MediaScheme,
+} from '@/main/editor-v2/media/media-url-registry';
+
+registerEditorV2MediaScheme();
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -115,6 +121,7 @@ const initializeModules = async () => {
 };
 
 app.whenReady().then(async () => {
+  installEditorV2MediaProtocol();
   initDock();
   await initializeModules();
   await update.handleAppUpdate();

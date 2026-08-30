@@ -11,6 +11,7 @@ import type { EditorProjectV2, EditorV2Workspace } from '@/types/editor-v2';
 interface ThreeDockShellProps {
   displayName: string;
   displayPath: string;
+  projectToken: string;
   project: EditorProjectV2;
   workspace: EditorV2Workspace;
   canSwitchVersion: boolean;
@@ -18,6 +19,9 @@ interface ThreeDockShellProps {
     update: (workspace: EditorV2Workspace) => EditorV2Workspace
   ) => void;
   onWorkspaceCommit: () => void;
+  onRemoveManaged: (assetId: string) => Promise<void>;
+  onMediaOperationStart: () => (() => void) | null;
+  operationsFrozen: boolean;
   onSwitchVersion: () => void;
 }
 
@@ -33,11 +37,15 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 export default function ThreeDockShell({
   displayName,
   displayPath,
+  projectToken,
   project,
   workspace,
   canSwitchVersion,
   onWorkspaceChange,
   onWorkspaceCommit,
+  onRemoveManaged,
+  onMediaOperationStart,
+  operationsFrozen,
   onSwitchVersion,
 }: ThreeDockShellProps) {
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
@@ -122,6 +130,10 @@ export default function ThreeDockShell({
               <div className="shrink-0" style={{ width: leftDockSize }}>
                 <BrowserDock
                   activeTab={workspace.browserTab}
+                  projectToken={projectToken}
+                  onRemoveManaged={onRemoveManaged}
+                  onMediaOperationStart={onMediaOperationStart}
+                  operationsFrozen={operationsFrozen}
                   onTabChange={browserTab => {
                     updateWorkspace(current => ({ ...current, browserTab }));
                     onWorkspaceCommit();

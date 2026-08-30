@@ -119,16 +119,6 @@ export function registerEditorV2DevHandlers(): void {
           error: 'This project has no V1 recording',
         };
       }
-      if (
-        request.targetVersion === 'v2' &&
-        data.projectLocation.kind !== 'capty-package'
-      ) {
-        return {
-          status: 'cancelled',
-          error: 'Create a Capty project before opening standalone media in V2',
-        };
-      }
-
       if (data.editorVersion === 'v2') {
         const confirmed = await data.closeCoordinator?.request('switch');
         if (!confirmed) {

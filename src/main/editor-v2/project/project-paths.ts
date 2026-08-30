@@ -13,6 +13,7 @@ export interface EditorV2ProjectPaths {
   workspaceTemporary: string;
   workspaceBackup: string;
   media: string;
+  mediaTombstones: string;
   data: string;
   cache: string;
   thumbnails: string;
@@ -33,6 +34,11 @@ export const getEditorV2ProjectPaths = (
   ),
   workspaceBackup: path.join(packagePath, `${PROJECT_FILES.V2_WORKSPACE}.bak`),
   media: path.join(packagePath, PROJECT_FILES.V2_MEDIA_FOLDER),
+  mediaTombstones: path.join(
+    packagePath,
+    PROJECT_FILES.V2_MEDIA_FOLDER,
+    '.tombstones'
+  ),
   data: path.join(packagePath, PROJECT_FILES.V2_DATA_FOLDER),
   cache: path.join(packagePath, PROJECT_FILES.V2_CACHE_FOLDER),
   thumbnails: path.join(
@@ -180,6 +186,7 @@ export const ensureEditorV2ProjectDirectories = async (
   const paths = getEditorV2ProjectPaths(packagePath);
   await Promise.all([
     ensureSafeDirectory(packagePath, paths.media),
+    ensureSafeDirectory(packagePath, paths.mediaTombstones),
     ensureSafeDirectory(packagePath, paths.data),
     ensureSafeDirectory(packagePath, paths.thumbnails),
     ensureSafeDirectory(packagePath, paths.waveforms),

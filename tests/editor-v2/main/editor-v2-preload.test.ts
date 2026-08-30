@@ -27,11 +27,17 @@ describe('Editor V2 preload', () => {
     expect(name).toBe('editorV2');
     expect(Object.keys(bridge).sort()).toEqual([
       'acknowledgeFlush',
+      'createProject',
+      'getMediaStatus',
+      'importMedia',
       'onFlushRequest',
       'onLoad',
       'onLoadError',
       'onMutationUnfreeze',
+      'relinkMedia',
       'reloadProject',
+      'removeManagedMedia',
+      'revealMedia',
       'saveProject',
       'saveProjectCopy',
       'saveWorkspace',
@@ -50,7 +56,13 @@ describe('Editor V2 preload', () => {
       saveProject: (value: unknown) => Promise<unknown>;
       reloadProject: (value: unknown) => Promise<unknown>;
       saveProjectCopy: (value: unknown) => Promise<unknown>;
+      createProject: (value: unknown) => Promise<unknown>;
       saveWorkspace: (value: unknown) => Promise<unknown>;
+      importMedia: (value: unknown) => Promise<unknown>;
+      getMediaStatus: (value: unknown) => Promise<unknown>;
+      relinkMedia: (value: unknown) => Promise<unknown>;
+      revealMedia: (value: unknown) => Promise<unknown>;
+      removeManagedMedia: (value: unknown) => Promise<unknown>;
       switchVersion: (value: unknown) => Promise<unknown>;
     };
     const cleanup = bridge.onLoad(() => undefined);
@@ -79,8 +91,32 @@ describe('Editor V2 preload', () => {
     expect(invoke).toHaveBeenCalledWith('editor-v2:project:save-copy', {
       projectToken: 'token',
     });
+    await bridge.createProject({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:project:create', {
+      projectToken: 'token',
+    });
     await bridge.saveWorkspace({ projectToken: 'token' });
     expect(invoke).toHaveBeenCalledWith('editor-v2:workspace:save', {
+      projectToken: 'token',
+    });
+    await bridge.importMedia({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:media:import', {
+      projectToken: 'token',
+    });
+    await bridge.getMediaStatus({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:media:status', {
+      projectToken: 'token',
+    });
+    await bridge.relinkMedia({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:media:relink', {
+      projectToken: 'token',
+    });
+    await bridge.revealMedia({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:media:reveal', {
+      projectToken: 'token',
+    });
+    await bridge.removeManagedMedia({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:media:remove-managed', {
       projectToken: 'token',
     });
     await bridge.switchVersion({ targetVersion: 'v1' });

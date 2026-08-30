@@ -2,10 +2,20 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type {
   EditorV2Bridge,
+  EditorV2CreateProjectRequest,
+  EditorV2CreateProjectResult,
   EditorV2FlushRequest,
   EditorV2FlushResult,
   EditorV2LoadErrorPayload,
   EditorV2LoadPayload,
+  EditorV2ManagedMediaRemoveRequest,
+  EditorV2ManagedMediaRemoveResult,
+  EditorV2MediaAssetRequest,
+  EditorV2MediaImportRequest,
+  EditorV2MediaImportResult,
+  EditorV2MediaRelinkResult,
+  EditorV2MediaRevealResult,
+  EditorV2MediaStatusResult,
   EditorV2MutationUnfreezeRequest,
   EditorV2ReloadRequest,
   EditorV2ReloadResult,
@@ -76,11 +86,47 @@ const bridge: EditorV2Bridge = {
       request
     ) as Promise<EditorV2SaveCopyResult>;
   },
+  createProject(request: EditorV2CreateProjectRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:project:create',
+      request
+    ) as Promise<EditorV2CreateProjectResult>;
+  },
   saveWorkspace(request: EditorV2WorkspaceSaveRequest) {
     return ipcRenderer.invoke(
       'editor-v2:workspace:save',
       request
     ) as Promise<EditorV2WorkspaceSaveResult>;
+  },
+  importMedia(request: EditorV2MediaImportRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:media:import',
+      request
+    ) as Promise<EditorV2MediaImportResult>;
+  },
+  getMediaStatus(request: EditorV2MediaAssetRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:media:status',
+      request
+    ) as Promise<EditorV2MediaStatusResult>;
+  },
+  relinkMedia(request: EditorV2MediaAssetRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:media:relink',
+      request
+    ) as Promise<EditorV2MediaRelinkResult>;
+  },
+  revealMedia(request: EditorV2MediaAssetRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:media:reveal',
+      request
+    ) as Promise<EditorV2MediaRevealResult>;
+  },
+  removeManagedMedia(request: EditorV2ManagedMediaRemoveRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:media:remove-managed',
+      request
+    ) as Promise<EditorV2ManagedMediaRemoveResult>;
   },
   switchVersion(request: EditorVersionSwitchRequest) {
     return ipcRenderer.invoke(

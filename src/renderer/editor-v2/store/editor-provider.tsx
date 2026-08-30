@@ -129,6 +129,15 @@ export default function EditorProvider({
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const getSnapshot = useCallback(
+    () => ({
+      document: stateRef.current.document,
+      mutationRevision: stateRef.current.mutationRevision,
+      persistedMutationRevision: stateRef.current.persistedMutationRevision,
+    }),
+    []
+  );
+
   const dispatchAndTrack = useCallback((action: EditorAction): void => {
     stateRef.current = reducer(stateRef.current, action);
     dispatch(action);
@@ -151,6 +160,23 @@ export default function EditorProvider({
       if (stateRef.current.frozen || transactionRef.current) return false;
       try {
         const execution = historyRef.current.execute(
+          stateRef.current.document,
+          command
+        );
+        applyExecution(execution);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [applyExecution]
+  );
+
+  const executeWithoutHistory = useCallback(
+    (command: EditorCommand): boolean => {
+      if (stateRef.current.frozen || transactionRef.current) return false;
+      try {
+        const execution = historyRef.current.executeWithoutHistory(
           stateRef.current.document,
           command
         );
@@ -260,7 +286,9 @@ export default function EditorProvider({
   const value = useMemo(
     () => ({
       ...state,
+      getSnapshot,
       execute,
+      executeWithoutHistory,
       beginTransaction,
       previewTransaction,
       commitTransaction,
@@ -281,7 +309,9 @@ export default function EditorProvider({
       clearRecovery,
       commitTransaction,
       execute,
+      executeWithoutHistory,
       freeze,
+      getSnapshot,
       previewTransaction,
       redo,
       replaceFromDisk,

@@ -5,6 +5,7 @@ import type {
   EditorProjectV2,
   EditorTrack,
   EditorTransition,
+  MediaAsset,
   SequenceEffect,
 } from '@/types/editor-v2';
 
@@ -20,6 +21,104 @@ const sortTrackClips = (document: EditorProjectV2, trackId: string): void => {
       document.sequence.clips[rightId].timelineStart
   );
 };
+
+const assetIsReferenced = (
+  document: EditorProjectV2,
+  assetId: string
+): boolean =>
+  document.sequence.preRoll?.assetId === assetId ||
+  Object.values(document.sequence.clips).some(
+    clip => clip.assetId === assetId
+  ) ||
+  document.sequence.effects.some(
+    effect =>
+      effect.kind === 'wallpaper' &&
+      effect.background.kind === 'image' &&
+      effect.background.assetId === assetId
+  );
+
+const createDetachAssetReferenceCommand = (
+  asset: MediaAsset
+): EditorCommand => ({
+  id: 'asset.detach',
+  label: 'Detach media',
+  apply(document) {
+    if (!document.assets[asset.id]) {
+      throw new EditorCommandError(`Asset ${asset.id} does not exist`);
+    }
+    if (assetIsReferenced(document, asset.id)) {
+      throw new EditorCommandError(`Asset ${asset.id} is still in use`);
+    }
+    const next = cloneDocument(document);
+    delete next.assets[asset.id];
+    return {
+      document: next,
+      affectedIds: [asset.id],
+      inverse: createAddAssetCommand(asset),
+    };
+  },
+});
+
+export const createAddAssetCommand = (asset: MediaAsset): EditorCommand => ({
+  id: 'asset.add',
+  label: 'Add media',
+  apply(document) {
+    if (document.assets[asset.id]) {
+      throw new EditorCommandError(`Asset ${asset.id} already exists`);
+    }
+    const next = cloneDocument(document);
+    next.assets[asset.id] = structuredClone(asset);
+    return {
+      document: next,
+      affectedIds: [asset.id],
+      inverse: createDetachAssetReferenceCommand(asset),
+    };
+  },
+});
+
+export const createRemoveAssetCommand = (assetId: string): EditorCommand => ({
+  id: 'asset.remove',
+  label: 'Remove media',
+  apply(document) {
+    const asset = document.assets[assetId];
+    if (!asset) throw new EditorCommandError(`Asset ${assetId} does not exist`);
+    if (asset.locator.kind === 'managed') {
+      throw new EditorCommandError('Managed media requires permanent removal');
+    }
+    if (assetIsReferenced(document, assetId)) {
+      throw new EditorCommandError(`Asset ${assetId} is still in use`);
+    }
+    const next = cloneDocument(document);
+    delete next.assets[assetId];
+    return {
+      document: next,
+      affectedIds: [assetId],
+      inverse: createAddAssetCommand(asset),
+    };
+  },
+});
+
+export const createUpdateAssetCommand = (
+  assetId: string,
+  replacement: MediaAsset
+): EditorCommand => ({
+  id: 'asset.relink',
+  label: 'Relink media',
+  apply(document) {
+    const asset = document.assets[assetId];
+    if (!asset) throw new EditorCommandError(`Asset ${assetId} does not exist`);
+    if (replacement.id !== assetId || replacement.kind !== asset.kind) {
+      throw new EditorCommandError('Asset identity cannot be changed');
+    }
+    const next = cloneDocument(document);
+    next.assets[assetId] = structuredClone(replacement);
+    return {
+      document: next,
+      affectedIds: [assetId],
+      inverse: createUpdateAssetCommand(assetId, asset),
+    };
+  },
+});
 
 export const createAddTrackCommand = (
   track: EditorTrack,

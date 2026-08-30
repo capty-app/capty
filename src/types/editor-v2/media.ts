@@ -140,3 +140,17 @@ export type MediaAsset =
   | AudioMediaAsset
   | ImageMediaAsset
   | CaptyRecordingMediaAsset;
+
+export type MediaImportPolicy = 'copy' | 'link';
+
+export type MediaAvailability = 'available' | 'missing' | 'changed' | 'error';
+
+export interface MediaAssetStatus {
+  assetId: string;
+  availability: MediaAvailability;
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+  waveformUrl?: string;
+  cacheWarning?: string;
+  error?: string;
+}

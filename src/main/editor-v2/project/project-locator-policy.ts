@@ -22,6 +22,21 @@ export const createLinkedPathAuthorization = async (
 ): Promise<Set<string>> =>
   new Set(await Promise.all([...paths].map(canonicalizePath)));
 
+export const collectLinkedMediaPaths = (project: EditorProjectV2): string[] => {
+  const paths: string[] = [];
+  const collect = (locator: MediaLocator | undefined) => {
+    if (locator?.kind === 'linked') paths.push(locator.absolutePath);
+  };
+  for (const asset of Object.values(project.assets)) {
+    collect(asset.locator);
+    if (asset.kind !== 'capty-recording') continue;
+    collect(asset.sources.systemAudio?.locator);
+    collect(asset.sources.microphoneAudio?.locator);
+    collect(asset.sources.cameraVideo?.locator);
+  }
+  return paths;
+};
+
 const validateMediaLocator = async (
   packagePath: string,
   locator: MediaLocator,
@@ -76,6 +91,16 @@ export const validateProjectLocatorAccess = async (
   for (const asset of Object.values(project.assets)) {
     await validateMediaLocator(packagePath, asset.locator, linkedAuthorization);
     if (asset.kind !== 'capty-recording') continue;
+    const sourceLocators = [
+      asset.sources.systemAudio?.locator,
+      asset.sources.microphoneAudio?.locator,
+      asset.sources.cameraVideo?.locator,
+    ];
+    for (const locator of sourceLocators) {
+      if (locator) {
+        await validateMediaLocator(packagePath, locator, linkedAuthorization);
+      }
+    }
     const dataLocators = [
       asset.sources.cameraMetadata?.locator,
       asset.sources.cursor?.locator,

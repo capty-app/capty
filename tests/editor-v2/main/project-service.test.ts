@@ -18,6 +18,10 @@ import { getEditorV2ProjectPaths } from '@/main/editor-v2/project/project-paths'
 import { EditorProjectService } from '@/main/editor-v2/project/project-service';
 
 const temporaryDirectories: string[] = [];
+const SOURCE_FINGERPRINT = {
+  byteLength: 5,
+  sha256: '0cab1c9617404faf2b24e221e189ca5945813e14d3f766345b09ca13bbe28ffc',
+};
 
 const createTemporaryDirectory = async (): Promise<string> => {
   const directory = await fs.mkdtemp(
@@ -46,7 +50,7 @@ const createStandaloneProject = (sourcePath: string) => {
     locator: {
       kind: 'linked',
       absolutePath: sourcePath,
-      fingerprint: { byteLength: 5, sha256: 'source' },
+      fingerprint: SOURCE_FINGERPRINT,
     },
     importedAt: '2026-08-30T00:00:00.000Z',
     durationTicks: 360_000,
@@ -189,7 +193,7 @@ describe('Editor V2 project service', () => {
     expect(service.release(reopened.session)).toBe(true);
   });
 
-  it('requires window-scoped authorization for linked media locators', async () => {
+  it('restores persisted linked authorization and rejects new unauthorized paths', async () => {
     const root = await createTemporaryDirectory();
     const packagePath = path.join(root, 'Linked.capty');
     const linkedPath = path.join(root, 'linked.png');
@@ -214,17 +218,28 @@ describe('Editor V2 project service', () => {
     await writeProject(packagePath, project);
 
     const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window', undefined);
+    expect(opened.project.assets.image).toBeDefined();
+    expect(
+      opened.session.linkedPathAuthorization.has(await fs.realpath(linkedPath))
+    ).toBe(true);
+
+    const unauthorizedPath = path.join(root, 'unauthorized.png');
+    await fs.writeFile(unauthorizedPath, 'unauthorized');
+    const changed = structuredClone(opened.project);
+    const image = changed.assets.image;
+    image.locator = {
+      kind: 'linked',
+      absolutePath: unauthorizedPath,
+      fingerprint: { byteLength: 12, sha256: 'unauthorized' },
+    };
     await expect(
-      service.open(packagePath, 'unauthorized-window', undefined)
-    ).rejects.toThrow('not authorized');
-    const authorized = await service.open(
-      packagePath,
-      'authorized-window',
-      undefined,
-      [linkedPath]
-    );
-    expect(authorized.project.assets.image).toBeDefined();
-    service.release(authorized.session);
+      service.saveProject(opened.session, 0, changed)
+    ).resolves.toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('not authorized'),
+    });
+    service.release(opened.session);
   });
 
   it('imports V1 in memory without writing or changing V1 files', async () => {
@@ -247,6 +262,9 @@ describe('Editor V2 project service', () => {
     }));
 
     expect(opened.importedInMemory).toBe(true);
+    expect(service.readActiveProject(opened.session).id).toBe(
+      opened.project.id
+    );
     await expect(
       fs.access(path.join(packagePath, 'project.json'))
     ).rejects.toThrow();
@@ -471,6 +489,198 @@ describe('Editor V2 project service', () => {
     expect(copyService.release(copy.session)).toBe(true);
   });
 
+  it('returns retryable media recovery warnings when a project opens', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Recovery.capty');
+    await fs.mkdir(path.join(packagePath, 'media', '.tombstones'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(packagePath, 'media', '.tombstones', '%'));
+    await writeProject(packagePath);
+    const service = new EditorProjectService();
+
+    const opened = await service.open(packagePath, 'window-1', undefined);
+    expect(opened.mediaRecoveryWarnings).toEqual([
+      'Unrecognized media tombstone %',
+    ]);
+    service.release(opened.session);
+  });
+
+  it('commits managed removal at a non-undoable revision and reopens without the asset', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Managed.capty');
+    await fs.mkdir(packagePath);
+    const project = createProject();
+    project.assets.managed = {
+      id: 'managed',
+      kind: 'image',
+      name: 'Managed',
+      locator: {
+        kind: 'managed',
+        relativePath: path.join('media', 'managed', 'image.png'),
+      },
+      importedAt: '2026-08-30T00:00:00.000Z',
+      width: 100,
+      height: 100,
+      orientation: 1,
+      defaultStillDurationTicks: 100,
+    };
+    await fs.mkdir(path.join(packagePath, 'media', 'managed'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(packagePath, 'media', 'managed', 'image.png'),
+      'managed'
+    );
+    await writeProject(packagePath, project);
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', undefined);
+
+    await expect(
+      service.removeManagedMedia(opened.session, 1, 'managed')
+    ).resolves.toEqual({ status: 'stale', diskRevision: 0 });
+    opened.session.staleRecoveryOpen = false;
+    const removed = await service.removeManagedMedia(
+      opened.session,
+      0,
+      'managed'
+    );
+    expect(removed).toMatchObject({
+      status: 'removed',
+      revision: 1,
+      project: { revision: 1, assets: {} },
+    });
+    service.release(opened.session);
+
+    const reopened = await service.open(packagePath, 'window-2', undefined);
+    expect(reopened.project.assets.managed).toBeUndefined();
+    expect(reopened.project.revision).toBe(1);
+    service.release(reopened.session);
+  });
+
+  it('converts standalone media with explicit Link in Place and reopens it', async () => {
+    const root = await createTemporaryDirectory();
+    const sourcePath = path.join(root, 'source.mov');
+    const destinationPath = path.join(root, 'Linked.capty');
+    await fs.writeFile(sourcePath, 'video');
+    const project = createStandaloneProject(sourcePath);
+    const workspace = createDefaultEditorWorkspace();
+    const service = new EditorProjectService();
+    const opened = await service.open(sourcePath, 'window-1', async () => ({
+      project,
+      workspace,
+      diagnostics: [],
+    }));
+    const converted = await service.convertStandalone({
+      session: opened.session,
+      destinationPath,
+      workspace,
+      policy: 'link',
+      sourceFingerprint: SOURCE_FINGERPRINT,
+      rekeyAdapters: async () => undefined,
+    });
+    expect(converted.assets.source.locator).toMatchObject({
+      kind: 'linked',
+      absolutePath: await fs.realpath(sourcePath),
+      fingerprint: SOURCE_FINGERPRINT,
+    });
+    expect(await fs.readdir(path.join(destinationPath, 'media'))).toEqual([
+      '.tombstones',
+    ]);
+    service.release(opened.session);
+
+    const reopened = await service.open(destinationPath, 'window-2', undefined);
+    expect(reopened.project.assets.source.locator.kind).toBe('linked');
+    service.release(reopened.session);
+  });
+
+  it('rejects standalone conversion when the source changed after opening', async () => {
+    const root = await createTemporaryDirectory();
+    const sourcePath = path.join(root, 'source.mov');
+    const destinationPath = path.join(root, 'Changed.capty');
+    await fs.writeFile(sourcePath, 'video');
+    const project = createStandaloneProject(sourcePath);
+    const workspace = createDefaultEditorWorkspace();
+    const service = new EditorProjectService();
+    const opened = await service.open(sourcePath, 'window-1', async () => ({
+      project,
+      workspace,
+      diagnostics: [],
+    }));
+
+    await expect(
+      service.convertStandalone({
+        session: opened.session,
+        destinationPath,
+        workspace,
+        policy: 'copy',
+        sourceFingerprint: { byteLength: 7, sha256: 'changed' },
+        rekeyAdapters: async () => undefined,
+      })
+    ).rejects.toThrow('source changed');
+    await expect(fs.access(destinationPath)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    service.release(opened.session);
+  });
+
+  it('rejects invalid standalone import policies instead of linking', async () => {
+    const root = await createTemporaryDirectory();
+    const sourcePath = path.join(root, 'source.mov');
+    const destinationPath = path.join(root, 'Invalid.capty');
+    await fs.writeFile(sourcePath, 'video');
+    const project = createStandaloneProject(sourcePath);
+    const workspace = createDefaultEditorWorkspace();
+    const service = new EditorProjectService();
+    const opened = await service.open(sourcePath, 'window-1', async () => ({
+      project,
+      workspace,
+      diagnostics: [],
+    }));
+
+    await expect(
+      service.convertStandalone({
+        session: opened.session,
+        destinationPath,
+        workspace,
+        policy: 'invalid' as 'copy',
+        sourceFingerprint: SOURCE_FINGERPRINT,
+        rekeyAdapters: async () => undefined,
+      })
+    ).rejects.toThrow('Invalid standalone media import policy');
+    service.release(opened.session);
+  });
+
+  it('rejects invalid standalone workspace state before creating files', async () => {
+    const root = await createTemporaryDirectory();
+    const sourcePath = path.join(root, 'source.mov');
+    const destinationPath = path.join(root, 'InvalidWorkspace.capty');
+    await fs.writeFile(sourcePath, 'video');
+    const project = createStandaloneProject(sourcePath);
+    const workspace = createDefaultEditorWorkspace();
+    const service = new EditorProjectService();
+    const opened = await service.open(sourcePath, 'window-1', async () => ({
+      project,
+      workspace,
+      diagnostics: [],
+    }));
+
+    await expect(
+      service.convertStandalone({
+        session: opened.session,
+        destinationPath,
+        workspace: { ...workspace, revision: -1 },
+        policy: 'copy',
+        sourceFingerprint: SOURCE_FINGERPRINT,
+        rekeyAdapters: async () => undefined,
+      })
+    ).rejects.toThrow('Workspace validation failed');
+    await expect(fs.access(destinationPath)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    service.release(opened.session);
+  });
+
   it('converts a standalone source into a V2 package by managed copy', async () => {
     const root = await createTemporaryDirectory();
     const sourcePath = path.join(root, 'source.mov');
@@ -488,10 +698,9 @@ describe('Editor V2 project service', () => {
     const converted = await service.convertStandalone({
       session: opened.session,
       destinationPath,
-      project,
       workspace,
       policy: 'copy',
-      sourceFingerprint: { byteLength: 5, sha256: 'source' },
+      sourceFingerprint: SOURCE_FINGERPRINT,
       rekeyAdapters: async () => undefined,
     });
 

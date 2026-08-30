@@ -30,6 +30,11 @@ vi.mock('electron', () => ({
     removeHandler: vi.fn(),
   },
   BrowserWindow: vi.fn(),
+  net: { fetch: vi.fn() },
+  protocol: {
+    registerSchemesAsPrivileged: vi.fn(),
+    handle: vi.fn(),
+  },
   screen: {
     getPrimaryDisplay: vi.fn(() => ({
       scaleFactor: 2,

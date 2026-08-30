@@ -12,6 +12,12 @@ export type EditorRecoveryState =
   | { kind: 'stale'; diskRevision: number }
   | { kind: 'save-failed'; error: string };
 
+export interface EditorStoreSnapshot {
+  document: EditorProjectV2;
+  mutationRevision: number;
+  persistedMutationRevision: number;
+}
+
 export interface EditorStoreValue {
   document: EditorProjectV2;
   selection: EditorSelection;
@@ -21,7 +27,9 @@ export interface EditorStoreValue {
   recovery: EditorRecoveryState;
   canUndo: boolean;
   canRedo: boolean;
+  getSnapshot: () => EditorStoreSnapshot;
   execute: (command: EditorCommand) => boolean;
+  executeWithoutHistory: (command: EditorCommand) => boolean;
   beginTransaction: () => boolean;
   previewTransaction: (command: EditorCommand) => boolean;
   commitTransaction: (id: string, label: string) => boolean;

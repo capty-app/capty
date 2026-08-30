@@ -9,12 +9,14 @@ interface TestEvent {
 interface TestWindowData {
   editorVersion: 'v1' | 'v2';
   projectToken: string;
-  projectLocation: {
-    kind: 'capty-package';
-    packagePath: string;
-    format: 'hybrid';
-    v1RecordingPath: string;
-  };
+  projectLocation:
+    | {
+        kind: 'capty-package';
+        packagePath: string;
+        format: 'hybrid';
+        v1RecordingPath: string;
+      }
+    | { kind: 'standalone'; sourcePath: string };
   window: {
     isDestroyed: () => boolean;
     once: typeof windowOnce;
@@ -61,6 +63,12 @@ vi.mock('@/main/utils/env', () => ({
   get isDev() {
     return mockIsDev;
   },
+}));
+
+vi.mock('@/main/history', () => ({ updateHistoryItemPath: vi.fn() }));
+vi.mock('@/main/utils/thumbnails', () => ({ rekeyThumbnail: vi.fn() }));
+vi.mock('@/main/editor-v2/media/metadata-service', () => ({
+  fingerprintMediaFile: vi.fn(),
 }));
 
 vi.mock('@/main/capture/video/window-manager', () => ({
@@ -124,6 +132,25 @@ describe('Editor V2 development handlers', () => {
       workspaceRevision: 0,
     });
 
+    await expect(pending).resolves.toEqual({ status: 'switched' });
+    expect(recreateVideoEditorWindow).toHaveBeenCalledWith(7, 'v2');
+  });
+
+  it('allows standalone media to enter V2 before required project creation', async () => {
+    windowData!.projectLocation = {
+      kind: 'standalone',
+      sourcePath: '/Media/source.mov',
+    };
+    const pending = handlers['editor-v2:version:switch'](event, {
+      targetVersion: 'v2',
+    });
+    const request = send.mock.calls[0][1] as { requestId: string };
+    listeners['video-editor:switch-flush-result'](event, {
+      requestId: request.requestId,
+      status: 'flushed',
+      projectRevision: 0,
+      workspaceRevision: 0,
+    });
     await expect(pending).resolves.toEqual({ status: 'switched' });
     expect(recreateVideoEditorWindow).toHaveBeenCalledWith(7, 'v2');
   });

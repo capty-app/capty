@@ -29,6 +29,15 @@ export class EditorCommandHistory {
     return execution;
   }
 
+  executeWithoutHistory(
+    document: EditorProjectV2,
+    command: EditorCommand
+  ): EditorCommandExecution {
+    const execution = executeEditorCommand(document, command);
+    this.redoEntries = [];
+    return execution;
+  }
+
   undo(document: EditorProjectV2): EditorCommandExecution | null {
     const entry = this.undoEntries.pop();
     if (!entry) return null;

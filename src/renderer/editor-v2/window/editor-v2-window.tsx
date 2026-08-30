@@ -24,6 +24,16 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
     payload.projectToken
   );
   const [workspace, setWorkspace] = useState(payload.workspace);
+  const [displayName, setDisplayName] = useState(payload.displayName);
+  const [displayPath, setDisplayPath] = useState(payload.displayPath);
+  const [requiresProjectCreation, setRequiresProjectCreation] = useState(
+    payload.requiresProjectCreation
+  );
+  const [historyNotice, setHistoryNotice] = useState<string | null>(
+    payload.mediaRecoveryWarnings.length > 0
+      ? payload.mediaRecoveryWarnings.join('\n')
+      : null
+  );
   const [error, setError] = useState<string | null>(null);
   const workspaceRef = useRef(payload.workspace);
   const workspaceRevisionRef = useRef(payload.workspace.revision);
@@ -33,6 +43,11 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
   );
   const workspaceDirtyRef = useRef(false);
   const workspaceFrozenRef = useRef(false);
+  const mediaOperationsFrozenRef = useRef(false);
+  const mediaOperationCountRef = useRef(0);
+  const mediaIdlePromiseRef = useRef(Promise.resolve());
+  const mediaIdleResolveRef = useRef<(() => void) | null>(null);
+  const [mediaOperationsFrozen, setMediaOperationsFrozen] = useState(false);
 
   const saveWorkspace = useCallback(async (): Promise<number> => {
     while (workspaceDirtyRef.current) {
@@ -97,24 +112,53 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
     []
   );
 
+  const beginMediaOperation = useCallback((): (() => void) | null => {
+    if (mediaOperationsFrozenRef.current) return null;
+    if (mediaOperationCountRef.current === 0) {
+      mediaIdlePromiseRef.current = new Promise<void>(resolve => {
+        mediaIdleResolveRef.current = resolve;
+      });
+    }
+    mediaOperationCountRef.current += 1;
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      mediaOperationCountRef.current -= 1;
+      if (mediaOperationCountRef.current !== 0) return;
+      mediaIdleResolveRef.current?.();
+      mediaIdleResolveRef.current = null;
+    };
+  }, []);
+
+  const setMediaFrozen = useCallback((frozen: boolean) => {
+    mediaOperationsFrozenRef.current = frozen;
+    setMediaOperationsFrozen(frozen);
+  }, []);
+
   useEffect(
     () =>
       window.editorV2.onMutationUnfreeze(() => {
         workspaceFrozenRef.current = false;
+        setMediaFrozen(false);
         store.unfreeze();
       }),
-    [store]
+    [setMediaFrozen, store]
   );
 
   useEffect(() => {
     return window.editorV2.onFlushRequest(request => {
-      workspaceFrozenRef.current = true;
-      store.freeze();
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-      Promise.all([flushProject(), enqueueWorkspaceSave()])
+      setMediaFrozen(true);
+      void mediaIdlePromiseRef.current
+        .then(() => {
+          workspaceFrozenRef.current = true;
+          store.freeze();
+          if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+          }
+          return Promise.all([flushProject(), enqueueWorkspaceSave()]);
+        })
         .then(([projectRevision, workspaceRevision]) => {
           window.editorV2.acknowledgeFlush({
             requestId: request.requestId,
@@ -125,6 +169,7 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
         })
         .catch(reason => {
           workspaceFrozenRef.current = false;
+          setMediaFrozen(false);
           store.unfreeze();
           window.editorV2.acknowledgeFlush({
             requestId: request.requestId,
@@ -135,7 +180,7 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
           });
         });
     });
-  }, [enqueueWorkspaceSave, flushProject, store]);
+  }, [enqueueWorkspaceSave, flushProject, setMediaFrozen, store]);
 
   useEffect(
     () => () => {
@@ -149,10 +194,11 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
       await window.editorV2.switchVersion({ targetVersion: 'v1' });
     if (result.status === 'cancelled') {
       workspaceFrozenRef.current = false;
+      setMediaFrozen(false);
       store.unfreeze();
       setError(result.error);
     }
-  }, [store]);
+  }, [setMediaFrozen, store]);
 
   const reloadFromDisk = useCallback(async () => {
     workspaceFrozenRef.current = true;
@@ -167,6 +213,11 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
       setWorkspace(result.workspace);
       store.replaceFromDisk(result.project);
       resetDiskRevision(result.project.revision);
+      setHistoryNotice(
+        result.mediaRecoveryWarnings.length > 0
+          ? result.mediaRecoveryWarnings.join('\n')
+          : null
+      );
       workspaceFrozenRef.current = false;
       return;
     }
@@ -184,11 +235,109 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
     if (result.status === 'failed') setError(result.error);
   }, [payload.projectToken, store.document]);
 
+  const createProject = useCallback(
+    async (policy: 'copy' | 'link') => {
+      const finishOperation = beginMediaOperation();
+      if (!finishOperation) return;
+      workspaceFrozenRef.current = true;
+      store.freeze();
+      try {
+        const result = await window.editorV2.createProject({
+          projectToken: payload.projectToken,
+          policy,
+          workspace: workspaceRef.current,
+        });
+        if (result.status === 'created') {
+          store.replaceFromDisk(result.project);
+          resetDiskRevision(result.project.revision);
+          setDisplayName(result.displayName);
+          setDisplayPath(result.displayPath);
+          setRequiresProjectCreation(false);
+          workspaceFrozenRef.current = false;
+          return;
+        }
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        if (result.status === 'failed') setError(result.error);
+      } catch (reason) {
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        finishOperation();
+      }
+    },
+    [beginMediaOperation, payload.projectToken, resetDiskRevision, store]
+  );
+
+  const removeManaged = useCallback(
+    async (assetId: string): Promise<void> => {
+      const finishOperation = beginMediaOperation();
+      if (!finishOperation) throw new Error('Media operations are frozen');
+      workspaceFrozenRef.current = true;
+      store.freeze();
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      try {
+        const [projectRevision] = await Promise.all([
+          flushProject(),
+          enqueueWorkspaceSave(),
+        ]);
+        const result = await window.editorV2.removeManagedMedia({
+          projectToken: payload.projectToken,
+          assetId,
+          expectedRevision: projectRevision,
+        });
+        if (result.status === 'removed') {
+          store.replaceFromDisk(result.project);
+          resetDiskRevision(result.revision);
+          workspaceFrozenRef.current = false;
+          setHistoryNotice(
+            [
+              'Managed media was permanently removed. Undo history was cleared.',
+              result.cleanupWarning,
+            ]
+              .filter(Boolean)
+              .join('\n')
+          );
+          return;
+        }
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        if (result.status === 'cancelled') return;
+        if (result.status === 'stale') {
+          store.acceptSave(store.mutationRevision, result);
+          throw new Error(
+            `Project changed on disk at revision ${result.diskRevision}`
+          );
+        }
+        throw new Error(result.error);
+      } catch (reason) {
+        workspaceFrozenRef.current = false;
+        store.unfreeze();
+        throw reason;
+      } finally {
+        finishOperation();
+      }
+    },
+    [
+      beginMediaOperation,
+      enqueueWorkspaceSave,
+      flushProject,
+      payload.projectToken,
+      resetDiskRevision,
+      store,
+    ]
+  );
+
   return (
     <>
       <ThreeDockShell
-        displayName={payload.displayName}
-        displayPath={payload.displayPath}
+        displayName={displayName}
+        displayPath={displayPath}
+        projectToken={payload.projectToken}
         project={store.document}
         workspace={workspace}
         canSwitchVersion={canShowEditorVersionSwitch(
@@ -196,8 +345,46 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
         )}
         onWorkspaceChange={updateWorkspace}
         onWorkspaceCommit={commitWorkspace}
+        onRemoveManaged={removeManaged}
+        onMediaOperationStart={beginMediaOperation}
+        operationsFrozen={mediaOperationsFrozen}
         onSwitchVersion={switchVersion}
       />
+      {requiresProjectCreation ? (
+        <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-project-title"
+            className="bg-card border-border max-w-md rounded-md border p-5 shadow-lg"
+          >
+            <h2 id="create-project-title" className="text-sm font-medium">
+              Create a Capty project to continue
+            </h2>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Editor V2 needs a Capty project before the first edit or media
+              import. Copying the source into the project is recommended.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={mediaOperationsFrozen}
+                onClick={() => void createProject('link')}
+              >
+                Link in Place
+              </Button>
+              <Button
+                size="sm"
+                disabled={mediaOperationsFrozen}
+                onClick={() => void createProject('copy')}
+              >
+                Create with Copy
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {store.recovery.kind !== 'none' ? (
         <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-6">
           <div
@@ -233,6 +420,15 @@ function EditorV2Session({ payload }: EditorV2SessionProps) {
             </div>
           </div>
         </div>
+      ) : null}
+      {historyNotice ? (
+        <button
+          type="button"
+          className="bg-card border-border fixed bottom-4 left-4 z-50 max-w-sm rounded-md border p-3 text-left text-sm"
+          onClick={() => setHistoryNotice(null)}
+        >
+          {historyNotice}
+        </button>
       ) : null}
       {error ? (
         <div

@@ -17,6 +17,8 @@ import {
 } from '@/main/editor-v2/preload-files';
 import { LegacyFfmpegProbeService } from '@/main/editor-v2/project/legacy-media-probe';
 import { EditorCloseCoordinator } from '@/main/editor-v2/project/close-coordinator';
+import { prepareStandaloneEditorProject } from '@/main/editor-v2/media/standalone-project';
+import { mediaUrlRegistry } from '@/main/editor-v2/media/media-url-registry';
 import type { EditorProjectLocation } from '@/types/editor-project';
 import type {
   EditorProjectSession,
@@ -142,7 +144,9 @@ const openV2Project = (
   projectToken: string
 ): Promise<OpenEditorProjectResult> =>
   projectService.open(getLocationIdentity(location), projectToken, () =>
-    createV1Import(location)
+    location.kind === 'standalone'
+      ? prepareStandaloneEditorProject(location.sourcePath)
+      : createV1Import(location)
   );
 
 const loadEditorPage = (
@@ -407,6 +411,8 @@ export function createVideoEditorWindow(
           isDev &&
           location.kind === 'capty-package' &&
           !!location.v1RecordingPath,
+        requiresProjectCreation: location.kind === 'standalone',
+        mediaRecoveryWarnings: opened.mediaRecoveryWarnings,
       });
     } catch (error) {
       console.error('Failed to open Editor V2 project:', error);
@@ -466,6 +472,7 @@ export function createVideoEditorWindow(
   });
 
   newWindow.on('closed', () => {
+    mediaUrlRegistry.revokeOwner(webContentsId);
     const windowData = videoEditorWindows.get(webContentsId);
     if (windowData?.projectSession) {
       void projectService.releaseWhenIdle(windowData.projectSession);

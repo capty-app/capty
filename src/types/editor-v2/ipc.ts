@@ -1,4 +1,5 @@
 import type { EditorProjectV2 } from './document';
+import type { MediaAsset, MediaAssetStatus, MediaImportPolicy } from './media';
 import type {
   EditorExportProgress,
   EditorExportResult,
@@ -16,6 +17,8 @@ export interface EditorV2LoadPayload {
   project: EditorProjectV2;
   workspace: EditorV2Workspace;
   canSwitchEditorVersion: boolean;
+  requiresProjectCreation: boolean;
+  mediaRecoveryWarnings: string[];
 }
 
 export interface EditorV2LoadErrorPayload {
@@ -38,7 +41,12 @@ export interface EditorV2ReloadRequest {
 }
 
 export type EditorV2ReloadResult =
-  | { status: 'loaded'; project: EditorProjectV2; workspace: EditorV2Workspace }
+  | {
+      status: 'loaded';
+      project: EditorProjectV2;
+      workspace: EditorV2Workspace;
+      mediaRecoveryWarnings: string[];
+    }
   | { status: 'cancelled' }
   | { status: 'failed'; error: string };
 
@@ -61,6 +69,68 @@ export interface EditorV2WorkspaceSaveRequest {
 
 export type EditorV2WorkspaceSaveResult =
   | { status: 'saved'; revision: number }
+  | { status: 'stale'; diskRevision: number }
+  | { status: 'failed'; error: string };
+
+export interface EditorV2CreateProjectRequest {
+  projectToken: EditorProjectToken;
+  policy: MediaImportPolicy;
+  workspace: EditorV2Workspace;
+}
+
+export type EditorV2CreateProjectResult =
+  | {
+      status: 'created';
+      project: EditorProjectV2;
+      displayName: string;
+      displayPath: string;
+    }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+export interface EditorV2MediaImportRequest {
+  projectToken: EditorProjectToken;
+  policy: MediaImportPolicy;
+}
+
+export type EditorV2MediaImportResult =
+  | { status: 'imported'; asset: MediaAsset; media: MediaAssetStatus }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+export interface EditorV2MediaAssetRequest {
+  projectToken: EditorProjectToken;
+  assetId: string;
+}
+
+export type EditorV2MediaStatusResult =
+  | { status: 'resolved'; asset: MediaAssetStatus }
+  | { status: 'failed'; error: string };
+
+export type EditorV2MediaRelinkResult =
+  | {
+      status: 'relinked';
+      asset: MediaAsset;
+      media: MediaAssetStatus;
+    }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+export type EditorV2MediaRevealResult =
+  { status: 'revealed' } | { status: 'failed'; error: string };
+
+export interface EditorV2ManagedMediaRemoveRequest extends EditorV2MediaAssetRequest {
+  expectedRevision: number;
+}
+
+export type EditorV2ManagedMediaRemoveResult =
+  | {
+      status: 'removed';
+      project: EditorProjectV2;
+      revision: number;
+      cleanupWarning?: string;
+    }
+  | { status: 'cancelled' }
   | { status: 'stale'; diskRevision: number }
   | { status: 'failed'; error: string };
 
@@ -105,7 +175,13 @@ export interface EditorV2IpcRequestMap {
   'editor-v2:project:save': EditorV2SaveRequest;
   'editor-v2:project:reload': EditorV2ReloadRequest;
   'editor-v2:project:save-copy': EditorV2SaveCopyRequest;
+  'editor-v2:project:create': EditorV2CreateProjectRequest;
   'editor-v2:workspace:save': EditorV2WorkspaceSaveRequest;
+  'editor-v2:media:import': EditorV2MediaImportRequest;
+  'editor-v2:media:status': EditorV2MediaAssetRequest;
+  'editor-v2:media:relink': EditorV2MediaAssetRequest;
+  'editor-v2:media:reveal': EditorV2MediaAssetRequest;
+  'editor-v2:media:remove-managed': EditorV2ManagedMediaRemoveRequest;
   'editor-v2:export:start': EditorV2StartExportRequest;
   'editor-v2:export:cancel': EditorV2CancelExportRequest;
   'editor-v2:version:switch': EditorVersionSwitchRequest;
@@ -115,7 +191,13 @@ export interface EditorV2IpcResultMap {
   'editor-v2:project:save': EditorV2SaveResult;
   'editor-v2:project:reload': EditorV2ReloadResult;
   'editor-v2:project:save-copy': EditorV2SaveCopyResult;
+  'editor-v2:project:create': EditorV2CreateProjectResult;
   'editor-v2:workspace:save': EditorV2WorkspaceSaveResult;
+  'editor-v2:media:import': EditorV2MediaImportResult;
+  'editor-v2:media:status': EditorV2MediaStatusResult;
+  'editor-v2:media:relink': EditorV2MediaRelinkResult;
+  'editor-v2:media:reveal': EditorV2MediaRevealResult;
+  'editor-v2:media:remove-managed': EditorV2ManagedMediaRemoveResult;
   'editor-v2:export:start': EditorV2StartExportResult;
   'editor-v2:export:cancel': { accepted: boolean };
   'editor-v2:version:switch': EditorVersionSwitchResult;
@@ -149,9 +231,27 @@ export interface EditorV2Bridge {
   saveProjectCopy: (
     request: EditorV2SaveCopyRequest
   ) => Promise<EditorV2SaveCopyResult>;
+  createProject: (
+    request: EditorV2CreateProjectRequest
+  ) => Promise<EditorV2CreateProjectResult>;
   saveWorkspace: (
     request: EditorV2WorkspaceSaveRequest
   ) => Promise<EditorV2WorkspaceSaveResult>;
+  importMedia: (
+    request: EditorV2MediaImportRequest
+  ) => Promise<EditorV2MediaImportResult>;
+  getMediaStatus: (
+    request: EditorV2MediaAssetRequest
+  ) => Promise<EditorV2MediaStatusResult>;
+  relinkMedia: (
+    request: EditorV2MediaAssetRequest
+  ) => Promise<EditorV2MediaRelinkResult>;
+  revealMedia: (
+    request: EditorV2MediaAssetRequest
+  ) => Promise<EditorV2MediaRevealResult>;
+  removeManagedMedia: (
+    request: EditorV2ManagedMediaRemoveRequest
+  ) => Promise<EditorV2ManagedMediaRemoveResult>;
   switchVersion: (
     request: EditorVersionSwitchRequest
   ) => Promise<EditorVersionSwitchResult>;

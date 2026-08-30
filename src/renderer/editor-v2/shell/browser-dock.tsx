@@ -2,16 +2,25 @@ import React from 'react';
 import { Film, Search, Sparkles } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
+import ProjectBrowser from '@/renderer/editor-v2/media/project-browser';
 import type { EditorV2Workspace } from '@/types/editor-v2';
 
 interface BrowserDockProps {
   activeTab: EditorV2Workspace['browserTab'];
+  projectToken: string;
+  onRemoveManaged: (assetId: string) => Promise<void>;
+  onMediaOperationStart: () => (() => void) | null;
+  operationsFrozen: boolean;
   onTabChange: (tab: EditorV2Workspace['browserTab']) => void;
   onCollapse: () => void;
 }
 
 export default function BrowserDock({
   activeTab,
+  projectToken,
+  onRemoveManaged,
+  onMediaOperationStart,
+  operationsFrozen,
   onTabChange,
   onCollapse,
 }: BrowserDockProps) {
@@ -40,31 +49,34 @@ export default function BrowserDock({
           Effects
         </Button>
       </div>
-      <div className="border-border flex h-9 items-center gap-2 border-b px-3">
-        <Search className="text-muted-foreground size-3.5" />
-        <span className="text-muted-foreground text-xs">
-          Search {activeTab}
-        </span>
-      </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-center">
-        <div>
-          <div className="bg-muted mx-auto mb-3 flex size-10 items-center justify-center rounded-md">
-            {activeTab === 'project' ? (
-              <Film className="text-muted-foreground size-5" />
-            ) : (
-              <Sparkles className="text-muted-foreground size-5" />
-            )}
+      {activeTab === 'project' ? (
+        <ProjectBrowser
+          projectToken={projectToken}
+          onRemoveManaged={onRemoveManaged}
+          onMediaOperationStart={onMediaOperationStart}
+          operationsFrozen={operationsFrozen}
+        />
+      ) : (
+        <>
+          <div className="border-border flex h-9 items-center gap-2 border-b px-3">
+            <Search className="text-muted-foreground size-3.5" />
+            <span className="text-muted-foreground text-xs">
+              Search effects
+            </span>
           </div>
-          <p className="text-sm font-medium">
-            {activeTab === 'project' ? 'Project media' : 'Effects library'}
-          </p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {activeTab === 'project'
-              ? 'Media import is not available in this preview.'
-              : 'Effects are not available in this preview.'}
-          </p>
-        </div>
-      </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-center">
+            <div>
+              <div className="bg-muted mx-auto mb-3 flex size-10 items-center justify-center rounded-md">
+                <Sparkles className="text-muted-foreground size-5" />
+              </div>
+              <p className="text-sm font-medium">Effects library</p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Effects are not available in this preview.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
       <div className="border-border border-t p-2">
         <Button
           variant="ghost"

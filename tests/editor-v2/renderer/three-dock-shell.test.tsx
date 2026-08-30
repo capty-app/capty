@@ -1,14 +1,21 @@
 import React, { act, useCallback, useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
 import { createDefaultEditorWorkspace } from '@/editor-v2/persistence/workspace';
 import ThreeDockShell from '@/renderer/editor-v2/shell/three-dock-shell';
+import EditorProvider from '@/renderer/editor-v2/store/editor-provider';
 import { render, type RenderResult } from '../helpers/render';
 import type { EditorV2Workspace } from '@/types/editor-v2';
 
 let rendered: RenderResult | null = null;
 const originalWindowHeight = window.innerHeight;
+
+beforeEach(() => {
+  window.editorV2 = {
+    getMediaStatus: vi.fn().mockResolvedValue({ status: 'failed' }),
+  } as unknown as Window['editorV2'];
+});
 
 function Harness({ onCommit }: { onCommit: () => void }) {
   const [workspace, setWorkspace] = useState(createDefaultEditorWorkspace);
@@ -18,24 +25,31 @@ function Harness({ onCommit }: { onCommit: () => void }) {
     },
     []
   );
+  const project = createEmptyEditorProject({
+    id: 'project',
+    name: 'Project',
+    createdAt: '2026-08-30T00:00:00.000Z',
+    sequenceId: 'sequence',
+    videoTrackId: 'video-track',
+    audioTrackId: 'audio-track',
+  });
   return (
-    <ThreeDockShell
-      displayName="Project"
-      displayPath="/Projects/Project.capty"
-      project={createEmptyEditorProject({
-        id: 'project',
-        name: 'Project',
-        createdAt: '2026-08-30T00:00:00.000Z',
-        sequenceId: 'sequence',
-        videoTrackId: 'video-track',
-        audioTrackId: 'audio-track',
-      })}
-      workspace={workspace}
-      canSwitchVersion
-      onWorkspaceChange={updateWorkspace}
-      onWorkspaceCommit={onCommit}
-      onSwitchVersion={() => undefined}
-    />
+    <EditorProvider initialDocument={project}>
+      <ThreeDockShell
+        displayName="Project"
+        displayPath="/Projects/Project.capty"
+        projectToken="token"
+        project={project}
+        workspace={workspace}
+        canSwitchVersion
+        onWorkspaceChange={updateWorkspace}
+        onWorkspaceCommit={onCommit}
+        onRemoveManaged={async () => undefined}
+        onMediaOperationStart={() => () => undefined}
+        operationsFrozen={false}
+        onSwitchVersion={() => undefined}
+      />
+    </EditorProvider>
   );
 }
 

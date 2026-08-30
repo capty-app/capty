@@ -12,11 +12,15 @@ import {
   getProjectFormat,
 } from '@/main/capture/video/recording-project';
 import type { EditorProjectLocation } from '@/types/editor-project';
+import { ManagedMediaRemovalService } from '@/main/editor-v2/media/managed-media-removal';
+import { fingerprintMediaFile } from '@/main/editor-v2/media/media-fingerprint';
 import type {
   EditorProjectV2,
+  EditorV2ManagedMediaRemoveResult,
   EditorV2SaveResult,
   EditorV2Workspace,
   EditorV2WorkspaceSaveResult,
+  MediaAsset,
   MediaFingerprint,
 } from '@/types/editor-v2';
 
@@ -34,6 +38,7 @@ import {
   type PendingManagedFile,
 } from './pending-managed-file';
 import {
+  collectLinkedMediaPaths,
   createLinkedPathAuthorization,
   validateProjectLocatorAccess,
 } from './project-locator-policy';
@@ -51,6 +56,8 @@ export interface EditorProjectSession {
   staleRecoveryOpen: boolean;
   pendingManagedFiles: PendingManagedFile[];
   linkedPathAuthorization: Set<string>;
+  mediaRecoveryWarnings: string[];
+  activeProject: EditorProjectV2 | null;
 }
 
 export interface PreparedV1ImportResult extends ImportV1ProjectResult {
@@ -67,12 +74,12 @@ export interface OpenEditorProjectResult {
     project: 'target' | 'temporary' | 'backup' | 'none';
     workspace: 'target' | 'temporary' | 'backup' | 'none';
   };
+  mediaRecoveryWarnings: string[];
 }
 
 export interface ConvertStandaloneProjectInput {
   session: EditorProjectSession;
   destinationPath: string;
-  project: EditorProjectV2;
   workspace: EditorV2Workspace;
   policy: 'copy' | 'link';
   sourceFingerprint: MediaFingerprint;
@@ -103,6 +110,18 @@ const isEditorProject = (value: unknown): value is EditorProjectV2 =>
 const isWorkspace = (value: unknown): value is EditorV2Workspace =>
   validateEditorWorkspace(value);
 
+const authorizePersistedLinkedPaths = async (
+  session: EditorProjectSession,
+  project: EditorProjectV2
+): Promise<void> => {
+  const authorized = await createLinkedPathAuthorization(
+    collectLinkedMediaPaths(project)
+  );
+  for (const filePath of authorized) {
+    session.linkedPathAuthorization.add(filePath);
+  }
+};
+
 const getPackagePath = (session: EditorProjectSession): string => {
   if (session.location.kind !== 'capty-package') {
     throw new Error('Standalone media must be converted before saving');
@@ -110,29 +129,44 @@ const getPackagePath = (session: EditorProjectSession): string => {
   return session.location.packagePath;
 };
 
-export class EditorProjectService {
-  private readonly queues = new Map<string, Promise<void>>();
+const getActiveProject = (session: EditorProjectSession): EditorProjectV2 => {
+  if (!session.activeProject) throw new Error('No active Editor V2 project');
+  return session.activeProject;
+};
 
-  constructor(private readonly locks = new ProjectLockService()) {}
+export class EditorProjectService {
+  private readonly queues = new Map<EditorProjectSession, Promise<void>>();
+
+  constructor(
+    private readonly locks = new ProjectLockService(),
+    private readonly managedRemoval = new ManagedMediaRemovalService()
+  ) {}
 
   private enqueue<T>(
     session: EditorProjectSession,
     operation: () => Promise<T>
   ): Promise<T> {
-    const prior = this.queues.get(session.lock.identity) ?? Promise.resolve();
+    const prior = this.queues.get(session) ?? Promise.resolve();
     session.pendingWrites += 1;
     const result = prior.then(operation, operation);
     const settled = result.then(
       () => undefined,
       () => undefined
     );
-    this.queues.set(session.lock.identity, settled);
+    this.queues.set(session, settled);
     return result.finally(() => {
       session.pendingWrites -= 1;
-      if (this.queues.get(session.lock.identity) === settled) {
-        this.queues.delete(session.lock.identity);
+      if (this.queues.get(session) === settled) {
+        this.queues.delete(session);
       }
     });
+  }
+
+  runMediaOperation<T>(
+    session: EditorProjectSession,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    return this.enqueue(session, operation);
   }
 
   async open(
@@ -158,6 +192,8 @@ export class EditorProjectService {
         staleRecoveryOpen: false,
         pendingManagedFiles: [],
         linkedPathAuthorization,
+        mediaRecoveryWarnings: [],
+        activeProject: null,
       };
 
       if (location.kind === 'standalone') {
@@ -166,6 +202,7 @@ export class EditorProjectService {
         }
         const imported = await importV1();
         session.pendingManagedFiles = imported.pendingManagedFiles ?? [];
+        session.activeProject = structuredClone(imported.project);
         return {
           session,
           project: imported.project,
@@ -173,6 +210,7 @@ export class EditorProjectService {
           importedInMemory: true,
           divergenceDetected: false,
           recoveredFrom: { project: 'none', workspace: 'none' },
+          mediaRecoveryWarnings: [],
         };
       }
 
@@ -186,6 +224,11 @@ export class EditorProjectService {
       );
 
       if (projectRecovery.value) {
+        session.mediaRecoveryWarnings = await this.managedRemoval.recover(
+          location.packagePath,
+          projectRecovery.value
+        );
+        await authorizePersistedLinkedPaths(session, projectRecovery.value);
         await validateProjectLocatorAccess(
           location.packagePath,
           projectRecovery.value,
@@ -195,6 +238,7 @@ export class EditorProjectService {
           location.packagePath,
           projectRecovery.value
         );
+        session.activeProject = structuredClone(projectRecovery.value);
         return {
           session,
           project: projectRecovery.value,
@@ -205,6 +249,7 @@ export class EditorProjectService {
             project: projectRecovery.source,
             workspace: workspaceRecovery.source,
           },
+          mediaRecoveryWarnings: [...session.mediaRecoveryWarnings],
         };
       }
 
@@ -219,6 +264,7 @@ export class EditorProjectService {
         session.linkedPathAuthorization
       );
       session.pendingManagedFiles = imported.pendingManagedFiles ?? [];
+      session.activeProject = structuredClone(imported.project);
       return {
         session,
         project: imported.project,
@@ -229,6 +275,7 @@ export class EditorProjectService {
           project: projectRecovery.source,
           workspace: workspaceRecovery.source,
         },
+        mediaRecoveryWarnings: [],
       };
     } catch (error) {
       this.locks.release(lock);
@@ -286,6 +333,7 @@ export class EditorProjectService {
         await writeJsonAtomic(projectAtomicPaths(packagePath), nextProject);
         session.pendingManagedFiles = [];
         session.staleRecoveryOpen = false;
+        session.activeProject = structuredClone(nextProject);
         const format = getProjectFormat(packagePath);
         if (format && session.location.kind === 'capty-package') {
           session.location = { ...session.location, format };
@@ -345,9 +393,11 @@ export class EditorProjectService {
     });
   }
 
-  async reload(
-    session: EditorProjectSession
-  ): Promise<{ project: EditorProjectV2; workspace: EditorV2Workspace }> {
+  async reload(session: EditorProjectSession): Promise<{
+    project: EditorProjectV2;
+    workspace: EditorV2Workspace;
+    mediaRecoveryWarnings: string[];
+  }> {
     return this.enqueue(session, async () => {
       const packagePath = getPackagePath(session);
       const projectRecovery = await recoverAtomicJson(
@@ -357,6 +407,11 @@ export class EditorProjectService {
       if (!projectRecovery.value) {
         throw new Error('No valid Editor V2 project could be recovered');
       }
+      session.mediaRecoveryWarnings = await this.managedRemoval.recover(
+        packagePath,
+        projectRecovery.value
+      );
+      await authorizePersistedLinkedPaths(session, projectRecovery.value);
       await validateProjectLocatorAccess(
         packagePath,
         projectRecovery.value,
@@ -367,9 +422,11 @@ export class EditorProjectService {
         isWorkspace
       );
       session.staleRecoveryOpen = false;
+      session.activeProject = structuredClone(projectRecovery.value);
       return {
         project: projectRecovery.value,
         workspace: workspaceRecovery.value ?? createDefaultEditorWorkspace(),
+        mediaRecoveryWarnings: [...session.mediaRecoveryWarnings],
       };
     });
   }
@@ -446,50 +503,97 @@ export class EditorProjectService {
     if (session.location.kind !== 'standalone') {
       throw new Error('Only standalone sources can be converted');
     }
-    if (session.pendingWrites > 0) {
-      throw new Error('Cannot convert while a save is pending');
+    if (input.policy !== 'copy' && input.policy !== 'link') {
+      throw new Error('Invalid standalone media import policy');
+    }
+    if (!validateEditorWorkspace(input.workspace)) {
+      throw new Error('Workspace validation failed');
     }
 
     const sourcePath = session.location.sourcePath;
-    const stagingPath = `${input.destinationPath}.creating-${session.ownerId}`;
+    const destinationPath = path.resolve(input.destinationPath);
+    try {
+      await fs.access(destinationPath);
+      throw new Error('The destination project already exists');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const stagingPath = `${destinationPath}.creating-${session.ownerId}`;
     await fs.rm(stagingPath, { recursive: true, force: true });
     await fs.mkdir(stagingPath, { recursive: true });
     let destinationCreated = false;
     let nextLock: ProjectLock | undefined;
 
     try {
-      const assets = structuredClone(input.project.assets);
-      const sourceAsset = Object.values(assets).find(
-        asset => asset.kind === 'video'
+      const project = structuredClone(getActiveProject(session));
+      const sourceAssets = Object.values(project.assets).filter(
+        asset => asset.kind === 'video' && asset.locator.kind === 'linked'
       );
-      if (!sourceAsset) {
+      const sourceAsset = sourceAssets[0];
+      if (
+        sourceAssets.length !== 1 ||
+        !sourceAsset ||
+        sourceAsset.locator.kind !== 'linked' ||
+        (await fs.realpath(sourceAsset.locator.absolutePath)) !== sourcePath
+      ) {
         throw new Error('Standalone project has no source video asset');
       }
-
-      if (input.policy === 'copy') {
-        const relativePath = path.join(
-          'media',
-          sourceAsset.id,
-          path.basename(sourcePath)
+      if (
+        sourceAsset.locator.fingerprint.byteLength !==
+          input.sourceFingerprint.byteLength ||
+        sourceAsset.locator.fingerprint.sha256 !==
+          input.sourceFingerprint.sha256
+      ) {
+        throw new Error(
+          'The standalone source changed. Reopen it before creating the project.'
         );
-        const destination = path.join(stagingPath, relativePath);
-        await fs.mkdir(path.dirname(destination), { recursive: true });
-        await fs.copyFile(sourcePath, destination);
-        sourceAsset.locator = { kind: 'managed', relativePath };
-      } else {
-        sourceAsset.locator = {
-          kind: 'linked',
-          absolutePath: sourcePath,
-          fingerprint: input.sourceFingerprint,
-        };
       }
 
-      const project: EditorProjectV2 = {
-        ...input.project,
-        assets,
-        revision: 1,
-        updatedAt: new Date().toISOString(),
-      };
+      switch (input.policy) {
+        case 'copy': {
+          const relativePath = path.join(
+            'media',
+            sourceAsset.id,
+            path.basename(sourcePath)
+          );
+          const destination = path.join(stagingPath, relativePath);
+          await fs.mkdir(path.dirname(destination), { recursive: true });
+          await fs.copyFile(sourcePath, destination);
+          const copiedFingerprint = await fingerprintMediaFile(destination);
+          if (
+            copiedFingerprint.byteLength !==
+              input.sourceFingerprint.byteLength ||
+            copiedFingerprint.sha256 !== input.sourceFingerprint.sha256
+          ) {
+            throw new Error(
+              'The standalone source changed. Reopen it before creating the project.'
+            );
+          }
+          sourceAsset.locator = { kind: 'managed', relativePath };
+          break;
+        }
+        case 'link': {
+          const linkedFingerprint = await fingerprintMediaFile(sourcePath);
+          if (
+            linkedFingerprint.byteLength !==
+              input.sourceFingerprint.byteLength ||
+            linkedFingerprint.sha256 !== input.sourceFingerprint.sha256
+          ) {
+            throw new Error(
+              'The standalone source changed. Reopen it before creating the project.'
+            );
+          }
+          sourceAsset.locator = {
+            kind: 'linked',
+            absolutePath: sourcePath,
+            fingerprint: linkedFingerprint,
+          };
+          break;
+        }
+      }
+
+      project.revision = 1;
+      project.updatedAt = new Date().toISOString();
       if (!validateEditorProject(project).valid) {
         throw new Error('Converted standalone project is invalid');
       }
@@ -502,9 +606,9 @@ export class EditorProjectService {
       );
       await writeJsonAtomic(projectAtomicPaths(stagingPath), project);
       await writeJsonAtomic(workspaceAtomicPaths(stagingPath), input.workspace);
-      await fs.rename(stagingPath, input.destinationPath);
+      await fs.rename(stagingPath, destinationPath);
       destinationCreated = true;
-      nextLock = await this.locks.rekey(session.lock, input.destinationPath);
+      nextLock = await this.locks.rekey(session.lock, destinationPath);
       const destinationIdentity = nextLock.identity;
       session.lock = nextLock;
       await input.rekeyAdapters(sourcePath, destinationIdentity);
@@ -513,11 +617,12 @@ export class EditorProjectService {
         packagePath: destinationIdentity,
         format: 'v2',
       };
+      session.activeProject = structuredClone(project);
       return project;
     } catch (error) {
       await fs.rm(stagingPath, { recursive: true, force: true });
       if (destinationCreated) {
-        await fs.rm(input.destinationPath, { recursive: true, force: true });
+        await fs.rm(destinationPath, { recursive: true, force: true });
       }
       if (nextLock) {
         session.lock = await this.locks.rekey(nextLock, sourcePath);
@@ -567,12 +672,125 @@ export class EditorProjectService {
     }
   }
 
+  readActiveProject(session: EditorProjectSession): EditorProjectV2 {
+    return structuredClone(getActiveProject(session));
+  }
+
+  addActiveAsset(session: EditorProjectSession, asset: MediaAsset): void {
+    const project = getActiveProject(session);
+    project.assets[asset.id] = structuredClone(asset);
+  }
+
+  updateActiveAsset(session: EditorProjectSession, asset: MediaAsset): void {
+    const project = getActiveProject(session);
+    if (!project.assets[asset.id]) {
+      throw new Error(`Asset ${asset.id} does not exist`);
+    }
+    project.assets[asset.id] = structuredClone(asset);
+  }
+
+  async readCommittedProject(
+    session: EditorProjectSession
+  ): Promise<EditorProjectV2> {
+    return this.enqueue(session, async () => {
+      const packagePath = getPackagePath(session);
+      const current = await recoverAtomicJson(
+        projectAtomicPaths(packagePath),
+        isEditorProject
+      );
+      if (!current.value) {
+        throw new Error('No valid Editor V2 project could be recovered');
+      }
+      return current.value;
+    });
+  }
+
+  async removeManagedMedia(
+    session: EditorProjectSession,
+    expectedRevision: number,
+    assetId: string
+  ): Promise<EditorV2ManagedMediaRemoveResult> {
+    return this.enqueue(session, async () => {
+      try {
+        if (session.staleRecoveryOpen) {
+          return {
+            status: 'failed',
+            error: 'Reload or save a copy before removing managed media',
+          };
+        }
+        const packagePath = getPackagePath(session);
+        const current = await recoverAtomicJson(
+          projectAtomicPaths(packagePath),
+          isEditorProject
+        );
+        const diskRevision = current.value?.revision ?? 0;
+        if (!current.value || diskRevision !== expectedRevision) {
+          session.staleRecoveryOpen = true;
+          return { status: 'stale', diskRevision };
+        }
+        const result = await this.managedRemoval.remove({
+          packagePath,
+          project: current.value,
+          assetId,
+          commit: async project => {
+            const nextProject: EditorProjectV2 = {
+              ...project,
+              revision: diskRevision + 1,
+              updatedAt: new Date().toISOString(),
+            };
+            if (!validateEditorProject(nextProject).valid) {
+              throw new Error('Project validation failed');
+            }
+            await validateProjectLocatorAccess(
+              packagePath,
+              nextProject,
+              session.linkedPathAuthorization
+            );
+            try {
+              await writeJsonAtomic(
+                projectAtomicPaths(packagePath),
+                nextProject
+              );
+              return nextProject;
+            } catch (error) {
+              const recovered = await recoverAtomicJson(
+                projectAtomicPaths(packagePath),
+                isEditorProject
+              );
+              if (
+                recovered.value?.revision === nextProject.revision &&
+                !recovered.value.assets[assetId]
+              ) {
+                return recovered.value;
+              }
+              throw error;
+            }
+          },
+        });
+        session.activeProject = structuredClone(result.project);
+        return {
+          status: 'removed',
+          project: result.project,
+          revision: result.project.revision,
+          ...(result.cleanupWarning
+            ? { cleanupWarning: result.cleanupWarning }
+            : {}),
+        };
+      } catch (error) {
+        return {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+  }
+
   async confirmCommittedRevisions(
     session: EditorProjectSession,
     projectRevision: number,
     workspaceRevision: number
   ): Promise<boolean> {
-    await (this.queues.get(session.lock.identity) ?? Promise.resolve());
+    await (this.queues.get(session) ?? Promise.resolve());
     const packagePath = getPackagePath(session);
     const [project, workspace] = await Promise.all([
       recoverAtomicJson(projectAtomicPaths(packagePath), isEditorProject),
@@ -586,12 +804,12 @@ export class EditorProjectService {
 
   release(session: EditorProjectSession): boolean {
     if (session.pendingWrites > 0) return false;
-    this.queues.delete(session.lock.identity);
+    this.queues.delete(session);
     return this.locks.release(session.lock);
   }
 
   async releaseWhenIdle(session: EditorProjectSession): Promise<boolean> {
-    await (this.queues.get(session.lock.identity) ?? Promise.resolve());
+    await (this.queues.get(session) ?? Promise.resolve());
     return this.release(session);
   }
 

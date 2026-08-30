@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { executeEditorCommand } from '@/editor-v2/commands/execute';
 import {
+  createAddAssetCommand,
   createAddClipCommand,
   createAddClipEffectCommand,
   createAddTransitionCommand,
+  createRemoveAssetCommand,
   createRemoveClipCommand,
   createRemoveTransitionCommand,
+  createUpdateAssetCommand,
   createUpdateClipCommand,
 } from '@/editor-v2/commands/operations';
 import { createEmptyEditorProject } from '@/editor-v2/document/defaults';
@@ -121,6 +124,96 @@ describe('Editor V2 basic document operations', () => {
         })
       )
     ).toThrow('locked');
+  });
+
+  it('adds and removes linked media with undoable locator updates', () => {
+    const asset = {
+      id: 'linked',
+      kind: 'image' as const,
+      name: 'Linked',
+      locator: {
+        kind: 'linked' as const,
+        absolutePath: '/Media/linked.png',
+        fingerprint: { byteLength: 10, sha256: 'first' },
+      },
+      importedAt: '2026-08-30T00:00:00.000Z',
+      width: 100,
+      height: 100,
+      orientation: 1,
+      defaultStillDurationTicks: 100,
+    };
+    const added = executeEditorCommand(
+      createProject(),
+      createAddAssetCommand(asset)
+    );
+    const detached = executeEditorCommand(added.document, added.inverse);
+    expect(detached.document.assets.linked).toBeUndefined();
+    expect(
+      executeEditorCommand(detached.document, detached.inverse).document.assets
+        .linked
+    ).toEqual(asset);
+
+    const relinkedLocator = {
+      kind: 'linked' as const,
+      absolutePath: '/Media/relinked.png',
+      fingerprint: { byteLength: 20, sha256: 'second' },
+    };
+    const relinked = executeEditorCommand(
+      added.document,
+      createUpdateAssetCommand(asset.id, {
+        ...asset,
+        locator: relinkedLocator,
+      })
+    );
+    expect(relinked.document.assets.linked.locator).toEqual(relinkedLocator);
+    expect(
+      executeEditorCommand(relinked.document, relinked.inverse).document.assets
+        .linked.locator
+    ).toEqual(asset.locator);
+    const removed = executeEditorCommand(
+      added.document,
+      createRemoveAssetCommand(asset.id)
+    );
+    expect(removed.document.assets.linked).toBeUndefined();
+    expect(
+      executeEditorCommand(removed.document, removed.inverse).document.assets
+        .linked
+    ).toEqual(asset);
+  });
+
+  it('rejects direct or referenced managed removal', () => {
+    const project = createProject();
+    expect(() =>
+      executeEditorCommand(project, createRemoveAssetCommand('image'))
+    ).toThrow('permanent removal');
+
+    project.assets.legacy = {
+      id: 'legacy',
+      kind: 'image',
+      name: 'Legacy',
+      locator: {
+        kind: 'legacy-package-read-only',
+        relativePath: 'wallpaper.png',
+        fingerprint: { byteLength: 10, sha256: 'legacy' },
+      },
+      importedAt: '2026-08-30T00:00:00.000Z',
+      width: 100,
+      height: 100,
+      orientation: 1,
+      defaultStillDurationTicks: 100,
+    };
+    project.sequence.effects.push({
+      id: 'wallpaper',
+      kind: 'wallpaper',
+      enabled: true,
+      background: { kind: 'image', assetId: 'legacy' },
+      padding: 0,
+      corners: 0,
+      shadow: 0,
+    });
+    expect(() =>
+      executeEditorCommand(project, createRemoveAssetCommand('legacy'))
+    ).toThrow('still in use');
   });
 
   it('validates transition track state and keeps removal undoable', () => {
