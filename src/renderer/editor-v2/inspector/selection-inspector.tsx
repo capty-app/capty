@@ -3,6 +3,8 @@ import { ChevronRight, Film, Layers3, Music2, Sparkles } from 'lucide-react';
 
 import { Button } from '@/renderer/components/ui/button';
 import { useEditorStore } from '../store/use-editor-store';
+import AudioClipInspector from './audio-clip-inspector';
+import AudioTrackInspector from './audio-track-inspector';
 import EffectInspector from './effect-inspector';
 import FirstFrameInspector from './first-frame-inspector';
 
@@ -56,6 +58,7 @@ export default function SelectionInspector({
             </p>
           </div>
         </div>
+        {clip.kind === 'audio' ? <AudioClipInspector clip={clip} /> : null}
         <div>
           <h3 className="text-muted-foreground mb-2 text-xs font-medium">
             Effects
@@ -130,6 +133,7 @@ export default function SelectionInspector({
           {track.kind} track with {track.clipIds.length} clips
         </p>
         <p className="text-xs">{track.locked ? 'Locked' : 'Editable'}</p>
+        {track.kind === 'audio' ? <AudioTrackInspector track={track} /> : null}
       </div>
     );
   }

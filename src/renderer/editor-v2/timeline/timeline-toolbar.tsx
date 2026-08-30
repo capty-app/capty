@@ -8,6 +8,7 @@ import {
   Plus,
   Scissors,
   Trash2,
+  Volume2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ interface TimelineToolbarProps {
   hasSelection: boolean;
   snappingEnabled: boolean;
   rippleEnabled: boolean;
+  scrubAudioEnabled: boolean;
   canEditTransition: boolean;
   onAddTrack: (kind: 'video' | 'audio') => void;
   onPlace: () => void;
@@ -27,6 +29,7 @@ interface TimelineToolbarProps {
   onDelete: () => void;
   onToggleSnapping: () => void;
   onToggleRipple: () => void;
+  onToggleScrubAudio: () => void;
   onCreateTransition: (
     type: 'video-cross-dissolve' | 'audio-crossfade'
   ) => void;
@@ -44,6 +47,7 @@ export default function TimelineToolbar({
   hasSelection,
   snappingEnabled,
   rippleEnabled,
+  scrubAudioEnabled,
   canEditTransition,
   onAddTrack,
   onPlace,
@@ -51,6 +55,7 @@ export default function TimelineToolbar({
   onDelete,
   onToggleSnapping,
   onToggleRipple,
+  onToggleScrubAudio,
   onCreateTransition,
   onCreateFade,
   onChangeTransitionDuration,
@@ -128,6 +133,16 @@ export default function TimelineToolbar({
         >
           <ChevronsLeftRight className="size-3.5" />
           Ripple
+        </Button>
+        <Button
+          size="icon"
+          variant={scrubAudioEnabled ? 'secondary' : 'ghost'}
+          className="size-7"
+          aria-label="Toggle scrub audio"
+          aria-pressed={scrubAudioEnabled}
+          onClick={onToggleScrubAudio}
+        >
+          <Volume2 className="size-3.5" />
         </Button>
         <Button
           size="sm"

@@ -1,3 +1,4 @@
+export * from './audio-plan';
 export * from './commands';
 export * from './document';
 export * from './effects';

@@ -64,8 +64,8 @@ export default function TimelineClip({
           className="absolute inset-0 size-full object-cover opacity-40"
         />
       ) : null}
-      {clip.kind === 'audio' ? (
-        <TimelineWaveform url={status?.waveformUrl} />
+      {status?.waveformUrl ? (
+        <TimelineWaveform url={status.waveformUrl} />
       ) : null}
       <span className="relative block truncate px-2 py-1 font-medium">
         {clip.name}

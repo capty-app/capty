@@ -339,18 +339,26 @@ export class MediaService {
         );
       }
     }
-    if (
-      !sourceStreamId &&
-      (asset.kind === 'audio' ||
-        asset.kind === 'video' ||
-        (asset.kind === 'capty-recording' && asset.audioStreams.length > 0))
-    ) {
+    const waveformStreamId =
+      sourceRole === 'system-audio' || sourceRole === 'microphone-audio'
+        ? sourceStreamId
+        : asset.kind !== 'image' &&
+            asset.audioStreams.some(stream => stream.id === sourceStreamId)
+          ? sourceStreamId
+          : undefined;
+    const hasAudioSource =
+      sourceRole === 'system-audio' ||
+      sourceRole === 'microphone-audio' ||
+      (asset.kind !== 'image' && asset.audioStreams.length > 0);
+    if (hasAudioSource) {
       try {
         const waveform = await this.waveforms.ensure(
           packagePath,
           asset.id,
           sourcePath,
-          forceCache
+          forceCache,
+          waveformStreamId,
+          sourceRole
         );
         status.waveformUrl = this.urls.authorize(ownerId, waveform);
       } catch (error) {

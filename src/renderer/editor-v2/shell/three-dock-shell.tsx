@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import BrowserDock from './browser-dock';
 import DockResizer from './dock-resizer';
@@ -56,6 +56,7 @@ export default function ThreeDockShell({
 }: ThreeDockShellProps) {
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
   const [playheadTick, setPlayheadTick] = useState(0);
+  const scrubAudioRef = useRef<((tick: number) => void) | null>(null);
   const timelineMaximum = Math.max(
     TIMELINE_MINIMUM,
     Math.floor(windowHeight * 0.55)
@@ -87,6 +88,12 @@ export default function ThreeDockShell({
       onWorkspaceChange(update);
     },
     [onWorkspaceChange]
+  );
+  const registerScrubAudio = useCallback(
+    (handler: ((tick: number) => void) | null) => {
+      scrubAudioRef.current = handler;
+    },
+    []
   );
   const toggleLeft = useCallback(() => {
     updateWorkspace(current => ({
@@ -177,6 +184,8 @@ export default function ThreeDockShell({
             currentTick={playheadTick}
             onCurrentTickChange={setPlayheadTick}
             directManipulation
+            scrubAudioEnabled={workspace.scrubAudioEnabled}
+            onScrubAudioHandlerChange={registerScrubAudio}
           />
           {!workspace.rightDock.collapsed ? (
             <>
@@ -239,7 +248,14 @@ export default function ThreeDockShell({
                 workspace={workspace}
                 commandBindings={commandBindings}
                 playheadTick={playheadTick}
-                onPlayheadChange={setPlayheadTick}
+                onPlayheadChange={tick => {
+                  const scrub = scrubAudioRef.current;
+                  if (scrub) {
+                    scrub(tick);
+                    return;
+                  }
+                  setPlayheadTick(tick);
+                }}
                 onWorkspaceChange={updateWorkspace}
                 onWorkspaceCommit={onWorkspaceCommit}
                 onCollapse={toggleTimeline}

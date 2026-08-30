@@ -507,6 +507,16 @@ export default function TimelineEditor({
           },
           isAvailable: () => true,
         },
+        'playback.toggle-scrub-audio': {
+          execute: () => {
+            onWorkspaceChange(current => ({
+              ...current,
+              scrubAudioEnabled: !current.scrubAudioEnabled,
+            }));
+            onWorkspaceCommit();
+          },
+          isAvailable: () => true,
+        },
         'timeline.zoom-in': {
           execute: () => setZoom(workspace.timeline.zoom * 1.25),
           isAvailable: () => workspace.timeline.zoom < MAXIMUM_ZOOM,
@@ -829,6 +839,7 @@ export default function TimelineEditor({
         hasSelection={store.selection.kind !== 'none'}
         snappingEnabled={workspace.snappingEnabled}
         rippleEnabled={workspace.rippleEnabled}
+        scrubAudioEnabled={workspace.scrubAudioEnabled}
         canEditTransition={store.selection.kind === 'transition'}
         onAddTrack={addTrack}
         onPlace={placeSelectedAsset}
@@ -842,6 +853,11 @@ export default function TimelineEditor({
         onToggleRipple={() =>
           void registry
             .find(command => command.id === 'edit.toggle-ripple')
+            ?.execute()
+        }
+        onToggleScrubAudio={() =>
+          void registry
+            .find(command => command.id === 'playback.toggle-scrub-audio')
             ?.execute()
         }
         onCreateTransition={createTransition}

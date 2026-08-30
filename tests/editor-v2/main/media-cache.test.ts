@@ -52,6 +52,33 @@ describe('Editor V2 media caches', () => {
     expect(JSON.parse(await fs.readFile(first, 'utf-8'))).toEqual([0, 0.5, 1]);
   });
 
+  it('isolates waveform caches by stream identity', async () => {
+    const packagePath = await createPackage();
+    const generate = vi.fn().mockResolvedValue([0, 1, 0]);
+    const service = new WaveformService({ generate });
+
+    const system = await service.ensure(
+      packagePath,
+      'recording',
+      '/Media/system.m4a',
+      false,
+      '0:0',
+      'system-audio'
+    );
+    const microphone = await service.ensure(
+      packagePath,
+      'recording',
+      '/Media/mic.m4a',
+      false,
+      '0:0',
+      'microphone-audio'
+    );
+
+    expect(system).not.toBe(microphone);
+    expect(generate).toHaveBeenNthCalledWith(1, '/Media/system.m4a', '0:0');
+    expect(generate).toHaveBeenNthCalledWith(2, '/Media/mic.m4a', '0:0');
+  });
+
   it('rejects traversal through asset IDs for every cache type', async () => {
     const packagePath = await createPackage();
     const thumbnails = new ThumbnailService({ generate: vi.fn() });

@@ -1,10 +1,10 @@
 import type { FirstFrameFit } from '@/types/first-frame';
 import type {
+  AudioPlan,
   ClipEffect,
   EditorProjectV2,
   MediaAsset,
   MediaSourceRole,
-  Rational,
   SequenceEffect,
   TimelineTick,
   TransformEffectValue,
@@ -66,24 +66,6 @@ export interface BlackLayerPlan {
 }
 
 export type VisualLayerPlan = FrameLayerPlan | BlackLayerPlan;
-
-export interface AudioRegionPlan {
-  clipId: string;
-  trackId: string;
-  assetId: string;
-  sourceStreamId?: string;
-  sourceRole?: MediaSourceRole;
-  sourceTick: TimelineTick;
-  playbackRate: Rational;
-  gain: number;
-  muted: boolean;
-  solo: boolean;
-}
-
-export interface AudioPlan {
-  tick: TimelineTick;
-  regions: readonly AudioRegionPlan[];
-}
 
 export interface CompositionSpec {
   width: number;

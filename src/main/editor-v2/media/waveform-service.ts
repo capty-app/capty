@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { promisify } from 'util';
@@ -10,7 +11,7 @@ import { getFFmpegPath } from '@/main/utils/ffmpeg';
 const execFileAsync = promisify(execFile);
 
 export interface WaveformGenerator {
-  generate(sourcePath: string): Promise<number[]>;
+  generate(sourcePath: string, sourceStreamId?: string): Promise<number[]>;
 }
 
 const parsePgm = (buffer: Buffer): number[] => {
@@ -36,7 +37,7 @@ const parsePgm = (buffer: Buffer): number[] => {
 };
 
 const defaultGenerator: WaveformGenerator = {
-  async generate(sourcePath) {
+  async generate(sourcePath, sourceStreamId) {
     const result = await execFileAsync(
       getFFmpegPath(),
       [
@@ -46,7 +47,7 @@ const defaultGenerator: WaveformGenerator = {
         '-i',
         sourcePath,
         '-filter_complex',
-        'showwavespic=s=512x64:colors=white,format=gray',
+        `${sourceStreamId ? `[${sourceStreamId}]` : ''}showwavespic=s=512x64:colors=white,format=gray`,
         '-frames:v',
         '1',
         '-f',
@@ -90,19 +91,32 @@ export class WaveformService {
     packagePath: string,
     assetId: string,
     sourcePath: string,
-    force = false
+    force = false,
+    sourceStreamId?: string,
+    sourceRole?: string
   ): Promise<string> {
     assertSafeAssetId(assetId);
-    const relativePath = path.join('cache', 'waveforms', `${assetId}.json`);
+    const sourceSuffix =
+      sourceStreamId || sourceRole
+        ? `-${createHash('sha256')
+            .update(JSON.stringify([sourceStreamId, sourceRole]))
+            .digest('hex')
+            .slice(0, 16)}`
+        : '';
+    const relativePath = path.join(
+      'cache',
+      'waveforms',
+      `${assetId}${sourceSuffix}.json`
+    );
     const target = await ensureSafeProjectWritePath(packagePath, relativePath);
     if (!force && (await readCache(target))) return target;
 
     const temporary = await ensureSafeProjectWritePath(
       packagePath,
-      path.join('cache', 'waveforms', `${assetId}.json.tmp`)
+      path.join('cache', 'waveforms', `${assetId}${sourceSuffix}.json.tmp`)
     );
     try {
-      const peaks = await this.generator.generate(sourcePath);
+      const peaks = await this.generator.generate(sourcePath, sourceStreamId);
       if (
         peaks.length === 0 ||
         !peaks.every(

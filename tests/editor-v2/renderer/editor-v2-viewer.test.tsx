@@ -255,6 +255,59 @@ describe('EditorV2Viewer', () => {
     );
   });
 
+  it('does not start stale audio after playback preparation is cancelled', async () => {
+    let resolveResume: (() => void) | null = null;
+    const createBufferSource = vi.fn();
+    class TestAudioContext {
+      currentTime = 0;
+      sampleRate = 48_000;
+      destination = {};
+      resume = vi.fn(
+        () =>
+          new Promise<void>(resolve => {
+            resolveResume = resolve;
+          })
+      );
+      close = vi.fn().mockResolvedValue(undefined);
+      createBufferSource = createBufferSource;
+    }
+    vi.stubGlobal('AudioContext', TestAudioContext);
+    window.editorV2 = {
+      getMediaStatus: vi.fn().mockResolvedValue({
+        status: 'resolved',
+        asset: { assetId: 'image', availability: 'missing' },
+      }),
+    } as unknown as Window['editorV2'];
+    rendered = render(
+      <EditorV2Viewer projectToken="token" project={createProject()} />
+    );
+    await flush();
+
+    act(() =>
+      rendered?.container
+        .querySelector<HTMLButtonElement>('[aria-label="Play"]')
+        ?.click()
+    );
+    expect(
+      rendered.container.querySelector('[aria-label="Preparing audio"]')
+    ).not.toBeNull();
+    act(() =>
+      rendered?.container
+        .querySelector<HTMLButtonElement>('[aria-label="Next frame"]')
+        ?.click()
+    );
+    await act(async () => {
+      resolveResume?.();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(
+      rendered.container.querySelector('[aria-label="Play"]')
+    ).not.toBeNull();
+    expect(createBufferSource).not.toHaveBeenCalled();
+  });
+
   it('shows loading and decode-error states', async () => {
     let rejectStatus: ((reason: Error) => void) | null = null;
     window.editorV2 = {

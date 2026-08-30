@@ -1,5 +1,6 @@
 import { EditorCommandError, type EditorCommand } from './command';
 import type {
+  AudioClip,
   ClipEffect,
   EditorClip,
   EditorProjectV2,
@@ -321,6 +322,53 @@ export const createUpdateClipCommand = (
       document: next,
       affectedIds: [clipId, clip.trackId],
       inverse: createUpdateClipCommand(clipId, clip),
+    };
+  },
+});
+
+export const createUpdateAudioClipCommand = (
+  clipId: string,
+  update: Partial<Pick<AudioClip, 'gain' | 'fadeInTicks' | 'fadeOutTicks'>>
+): EditorCommand => ({
+  id: 'clip.audio.update',
+  label: 'Update clip audio',
+  apply(document) {
+    const clip = document.sequence.clips[clipId];
+    if (!clip || clip.kind !== 'audio') {
+      throw new EditorCommandError(`Audio clip ${clipId} does not exist`);
+    }
+    const track = document.sequence.tracks[clip.trackId];
+    if (track.locked) {
+      throw new EditorCommandError(`Track ${track.id} is locked`);
+    }
+    const nextClip = { ...clip, ...update };
+    if (
+      !Number.isFinite(nextClip.gain) ||
+      nextClip.gain < 0 ||
+      nextClip.gain > 4
+    ) {
+      throw new EditorCommandError('Audio clip gain is invalid');
+    }
+    if (
+      !Number.isSafeInteger(nextClip.fadeInTicks) ||
+      !Number.isSafeInteger(nextClip.fadeOutTicks) ||
+      nextClip.fadeInTicks < 0 ||
+      nextClip.fadeOutTicks < 0 ||
+      nextClip.fadeInTicks > nextClip.timelineDuration ||
+      nextClip.fadeOutTicks > nextClip.timelineDuration
+    ) {
+      throw new EditorCommandError('Audio clip fade duration is invalid');
+    }
+    const next = cloneDocument(document);
+    next.sequence.clips[clipId] = nextClip;
+    return {
+      document: next,
+      affectedIds: [clipId, clip.trackId],
+      inverse: createUpdateAudioClipCommand(clipId, {
+        gain: clip.gain,
+        fadeInTicks: clip.fadeInTicks,
+        fadeOutTicks: clip.fadeOutTicks,
+      }),
     };
   },
 });

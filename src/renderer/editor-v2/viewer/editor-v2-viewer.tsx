@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { ticksForFrames } from '@/editor-v2/time/timebase';
+import { buildCompleteAudioTimelinePlan } from '@/editor-v2/timeline/audio-plan';
 import {
   evaluateSequence,
   getSequenceOutputDuration,
@@ -25,12 +26,10 @@ import { Button } from '@/renderer/components/ui/button';
 import { EditorV2CompositionEngine } from '../composition/composition-engine';
 import { createLegacyCaptyEffectAdapter } from '../composition/legacy-capty-effect-adapter';
 import { BrowserCompositionSourceProvider } from '../composition/source-provider';
+import { EditorV2AudioScheduler } from './audio-scheduler';
 import DirectManipulationOverlay from './direct-manipulation-overlay';
 import { formatViewerTimecode } from './timecode';
-import {
-  EDITOR_V2_TICKS_PER_SECOND,
-  type EditorProjectV2,
-} from '@/types/editor-v2';
+import type { EditableDataLocator, EditorProjectV2 } from '@/types/editor-v2';
 
 interface EditorV2ViewerProps {
   projectToken: string;
@@ -38,6 +37,10 @@ interface EditorV2ViewerProps {
   currentTick?: number;
   onCurrentTickChange?: (tick: number) => void;
   directManipulation?: boolean;
+  scrubAudioEnabled?: boolean;
+  onScrubAudioHandlerChange?: (
+    handler: ((tick: number) => void) | null
+  ) => void;
 }
 
 type ViewerStatus =
@@ -54,11 +57,14 @@ export default function EditorV2Viewer({
   currentTick: controlledCurrentTick,
   onCurrentTickChange,
   directManipulation = false,
+  scrubAudioEnabled = false,
+  onScrubAudioHandlerChange,
 }: EditorV2ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef(0);
   const renderQueueRef = useRef(Promise.resolve());
   const currentTickRef = useRef(0);
+  const playbackRequestRef = useRef(0);
   const [internalCurrentTick, setInternalCurrentTick] = useState(0);
   const currentTick = controlledCurrentTick ?? internalCurrentTick;
   const setCurrentTick = useCallback(
@@ -71,8 +77,10 @@ export default function EditorV2Viewer({
     [onCurrentTickChange]
   );
   const [playing, setPlaying] = useState(false);
+  const [preparingAudio, setPreparingAudio] = useState(false);
   const [fit, setFit] = useState(true);
   const [status, setStatus] = useState<ViewerStatus>({ kind: 'empty' });
+  const [audioError, setAudioError] = useState<string | null>(null);
   const duration = getSequenceOutputDuration(project);
   const frameTicks = ticksForFrames(
     1,
@@ -113,8 +121,34 @@ export default function EditorV2Viewer({
       })
     );
   }, [project.assets, projectToken]);
+  const resolveKeyboardData = useCallback(
+    async (locator: EditableDataLocator) => {
+      const result = await window.editorV2.readData({
+        projectToken,
+        kind: 'keyboard',
+        locator,
+      });
+      if (result.status === 'failed') throw new Error(result.error);
+      return result.data;
+    },
+    [projectToken]
+  );
+  const getAudioPlan = useCallback(
+    () => buildCompleteAudioTimelinePlan(project, resolveKeyboardData),
+    [project, resolveKeyboardData]
+  );
+  const audioScheduler = useMemo(
+    () => new EditorV2AudioScheduler({ projectToken, onError: setAudioError }),
+    [projectToken]
+  );
 
   useEffect(() => () => engine.dispose(), [engine]);
+  useEffect(
+    () => () => {
+      void audioScheduler.dispose();
+    },
+    [audioScheduler]
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -189,21 +223,29 @@ export default function EditorV2Viewer({
   }, [currentTick]);
 
   useEffect(() => {
+    playbackRequestRef.current += 1;
+    audioScheduler.stop();
+    setPreparingAudio(false);
+    setPlaying(false);
+  }, [audioScheduler, project]);
+
+  useEffect(() => {
     if (!playing) return;
     if (duration <= 0 || currentTickRef.current >= duration) {
+      audioScheduler.stop();
       setPlaying(false);
       return;
     }
-    const startedAt = performance.now();
-    const startTick = currentTickRef.current;
     let frameId = 0;
-    const update = (now: number) => {
-      const elapsedTicks = Math.floor(
-        ((now - startedAt) * EDITOR_V2_TICKS_PER_SECOND) / 1_000
+    const update = () => {
+      const playbackTick = audioScheduler.getPlaybackTick();
+      const nextTick = Math.min(
+        duration,
+        playbackTick ?? currentTickRef.current
       );
-      const nextTick = Math.min(duration, startTick + elapsedTicks);
       setCurrentTick(nextTick);
       if (nextTick >= duration) {
+        audioScheduler.stop();
         setPlaying(false);
         return;
       }
@@ -211,7 +253,7 @@ export default function EditorV2Viewer({
     };
     frameId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frameId);
-  }, [duration, playing, setCurrentTick]);
+  }, [audioScheduler, duration, playing, setCurrentTick]);
 
   useEffect(() => {
     if (currentTick <= duration) return;
@@ -219,19 +261,91 @@ export default function EditorV2Viewer({
   }, [currentTick, duration, setCurrentTick]);
 
   const togglePlayback = useCallback(() => {
-    if (duration <= 0) return;
-    if (currentTick >= duration) setCurrentTick(0);
-    setPlaying(current => !current);
-  }, [currentTick, duration, setCurrentTick]);
+    if (duration <= 0 || preparingAudio) return;
+    playbackRequestRef.current += 1;
+    const requestId = playbackRequestRef.current;
+    if (playing) {
+      audioScheduler.stop();
+      setPlaying(false);
+      return;
+    }
+    const startTick = currentTick >= duration ? 0 : currentTick;
+    if (startTick !== currentTick) setCurrentTick(startTick);
+    setAudioError(null);
+    setPreparingAudio(true);
+    void (async () => {
+      try {
+        await audioScheduler.prepare();
+        if (playbackRequestRef.current !== requestId) return;
+        const plan = await getAudioPlan();
+        if (playbackRequestRef.current !== requestId) return;
+        await audioScheduler.play(project, plan, startTick);
+        if (playbackRequestRef.current !== requestId) {
+          audioScheduler.stop();
+          return;
+        }
+        setPreparingAudio(false);
+        setPlaying(true);
+      } catch (reason) {
+        if (playbackRequestRef.current !== requestId) return;
+        setPreparingAudio(false);
+        audioScheduler.report(reason);
+      }
+    })();
+  }, [
+    audioScheduler,
+    currentTick,
+    duration,
+    getAudioPlan,
+    playing,
+    preparingAudio,
+    project,
+    setCurrentTick,
+  ]);
+
+  const scrubAt = useCallback(
+    (nextTick: number) => {
+      playbackRequestRef.current += 1;
+      const requestId = playbackRequestRef.current;
+      audioScheduler.stop();
+      setPreparingAudio(false);
+      setPlaying(false);
+      setCurrentTick(nextTick);
+      if (!scrubAudioEnabled) return;
+      setAudioError(null);
+      void (async () => {
+        try {
+          await audioScheduler.prepare();
+          if (playbackRequestRef.current !== requestId) return;
+          const plan = await getAudioPlan();
+          if (playbackRequestRef.current !== requestId) return;
+          await audioScheduler.scrub(project, plan, nextTick);
+          if (playbackRequestRef.current !== requestId) audioScheduler.stop();
+        } catch (reason) {
+          if (playbackRequestRef.current !== requestId) return;
+          audioScheduler.report(reason);
+        }
+      })();
+    },
+    [audioScheduler, getAudioPlan, project, scrubAudioEnabled, setCurrentTick]
+  );
+
+  useEffect(() => {
+    onScrubAudioHandlerChange?.(scrubAt);
+    return () => onScrubAudioHandlerChange?.(null);
+  }, [onScrubAudioHandlerChange, scrubAt]);
 
   const step = useCallback(
     (direction: -1 | 1) => {
+      playbackRequestRef.current += 1;
+      audioScheduler.stop();
+      setPreparingAudio(false);
       setPlaying(false);
       setCurrentTick(current =>
         Math.min(duration, Math.max(0, current + direction * frameTicks))
       );
     },
-    [duration, frameTicks, setCurrentTick]
+    [audioScheduler, duration, frameTicks, setCurrentTick]
   );
 
   return (
@@ -270,6 +384,14 @@ export default function EditorV2Viewer({
             />
           ) : null}
         </div>
+        {audioError ? (
+          <div
+            role="status"
+            className="bg-destructive text-destructive-foreground absolute top-3 right-3 max-w-sm rounded-md px-3 py-2 text-xs shadow-lg"
+          >
+            Audio preview unavailable: {audioError}
+          </div>
+        ) : null}
         {status.kind !== 'ready' ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8 text-center">
             <div className="rounded-md bg-black/70 px-4 py-3 text-white shadow-lg">
@@ -319,10 +441,7 @@ export default function EditorV2Viewer({
           step={1}
           value={Math.min(currentTick, duration)}
           disabled={duration === 0}
-          onChange={event => {
-            setPlaying(false);
-            setCurrentTick(Number(event.currentTarget.value));
-          }}
+          onChange={event => scrubAt(Number(event.currentTarget.value))}
           className="accent-primary h-2 w-full"
         />
         <div className="flex min-h-0 flex-1 items-center justify-between">
@@ -347,11 +466,15 @@ export default function EditorV2Viewer({
               variant="secondary"
               size="icon"
               className="size-8"
-              aria-label={playing ? 'Pause' : 'Play'}
-              disabled={duration === 0}
+              aria-label={
+                preparingAudio ? 'Preparing audio' : playing ? 'Pause' : 'Play'
+              }
+              disabled={duration === 0 || preparingAudio}
               onClick={togglePlayback}
             >
-              {playing ? (
+              {preparingAudio ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : playing ? (
                 <Pause className="size-4 fill-current" />
               ) : (
                 <Play className="size-4 fill-current" />
