@@ -1,6 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
+
+import {
+  createDefaultCommandBindings,
+  migrateLegacyEditorBindings,
+} from '@/editor-v2/commands/bindings';
 import { daemon } from '@/main/daemon';
 import type {
   CloudConfig,
@@ -32,8 +37,18 @@ export { createOrShowSettingsWindow } from './window';
 
 const CONFIG_DIR = getConfigDir();
 const CONFIG_FILE = getConfigFilePath();
+const commandBindingPlatform =
+  process.platform === 'darwin' ? 'darwin' : 'other';
 
-let currentConfig: SettingsConfig = { ...DEFAULT_SETTINGS };
+export const createDefaultSettingsConfig = (): SettingsConfig => ({
+  ...DEFAULT_SETTINGS,
+  shortcuts: {
+    ...DEFAULT_SETTINGS.shortcuts,
+    editorV2: createDefaultCommandBindings(commandBindingPlatform),
+  },
+});
+
+let currentConfig: SettingsConfig = createDefaultSettingsConfig();
 let configLoaded = false;
 let previewConfigListener: ((config: SettingsConfig) => void) | null = null;
 
@@ -212,6 +227,14 @@ export function loadConfig(): SettingsConfig {
             ...DEFAULT_SETTINGS.shortcuts.videoEditorSidebar,
             ...savedConfig.shortcuts?.videoEditorSidebar,
           },
+          editorV2: migrateLegacyEditorBindings(
+            savedConfig.shortcuts?.editorV2,
+            {
+              editor: savedConfig.shortcuts?.editor,
+              videoEditorSidebar: savedConfig.shortcuts?.videoEditorSidebar,
+            },
+            commandBindingPlatform
+          ),
         },
         editor: { ...DEFAULT_SETTINGS.editor, ...savedConfig.editor },
         wallpaper: migrateWallpaperConfig(savedConfig.wallpaper),
@@ -235,13 +258,13 @@ export function loadConfig(): SettingsConfig {
         },
       };
     } else {
-      currentConfig = { ...DEFAULT_SETTINGS };
+      currentConfig = createDefaultSettingsConfig();
       saveConfig(currentConfig);
     }
     configLoaded = true;
   } catch (error) {
     console.error('Failed to load config:', error);
-    currentConfig = { ...DEFAULT_SETTINGS };
+    currentConfig = createDefaultSettingsConfig();
     configLoaded = true;
   }
   return currentConfig;
@@ -312,6 +335,7 @@ export function updateConfig(updates: Partial<SettingsConfig>): SettingsConfig {
         ...currentConfig.shortcuts.videoEditorSidebar,
         ...updates.shortcuts?.videoEditorSidebar,
       },
+      editorV2: updates.shortcuts?.editorV2 ?? currentConfig.shortcuts.editorV2,
     },
     editor: { ...currentConfig.editor, ...updates.editor },
     wallpaper: { ...currentConfig.wallpaper, ...updates.wallpaper },
@@ -408,7 +432,7 @@ export function init() {
   );
 
   ipcMain.handle('settings:reset', () => {
-    currentConfig = { ...DEFAULT_SETTINGS };
+    currentConfig = createDefaultSettingsConfig();
     saveConfig(currentConfig);
     applyLoginItemSetting();
     previewConfigListener?.(currentConfig);

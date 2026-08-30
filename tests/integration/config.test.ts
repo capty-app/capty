@@ -63,11 +63,11 @@ describe('Config Management', () => {
     it('should return default settings when config file does not exist', async () => {
       mockFs.existsSync.mockReturnValue(false);
 
-      const { DEFAULT_SETTINGS } = await import('@/types/settings');
-      const { loadConfig } = await import('@/main/settings');
+      const { loadConfig, createDefaultSettingsConfig } =
+        await import('@/main/settings');
       const config = loadConfig();
 
-      expect(config).toEqual(DEFAULT_SETTINGS);
+      expect(config).toEqual(createDefaultSettingsConfig());
       expect(mockFs.writeFileSync).toHaveBeenCalled(); // Should save defaults
     });
 
@@ -117,17 +117,18 @@ describe('Config Management', () => {
       expect(config.recording).toBeDefined();
       expect(config.recording.autoZoom).toBe(false);
       expect(config.editor).toBeDefined();
+      expect(config.shortcuts.editorV2.length).toBeGreaterThan(0);
     });
 
     it('should return defaults on parse error', async () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue('invalid json');
 
-      const { DEFAULT_SETTINGS } = await import('@/types/settings');
-      const { loadConfig } = await import('@/main/settings');
+      const { loadConfig, createDefaultSettingsConfig } =
+        await import('@/main/settings');
       const config = loadConfig();
 
-      expect(config).toEqual(DEFAULT_SETTINGS);
+      expect(config).toEqual(createDefaultSettingsConfig());
     });
 
     it('should create config directory if it does not exist', async () => {
@@ -190,13 +191,13 @@ describe('Config Management', () => {
     it('should return current config', async () => {
       mockFs.existsSync.mockReturnValue(false);
 
-      const { DEFAULT_SETTINGS } = await import('@/types/settings');
-      const { loadConfig, getConfig } = await import('@/main/settings');
+      const { loadConfig, getConfig, createDefaultSettingsConfig } =
+        await import('@/main/settings');
 
       loadConfig();
       const config = getConfig();
 
-      expect(config).toEqual(DEFAULT_SETTINGS);
+      expect(config).toEqual(createDefaultSettingsConfig());
     });
   });
 
@@ -443,14 +444,14 @@ describe('Config Management', () => {
     it('should handle settings:get IPC call', async () => {
       mockFs.existsSync.mockReturnValue(false);
 
-      const { init } = await import('@/main/settings');
-      const { DEFAULT_SETTINGS } = await import('@/types/settings');
+      const { init, createDefaultSettingsConfig } =
+        await import('@/main/settings');
       init();
 
       const handler = ipcHandlers['settings:get'];
       const result = handler();
 
-      expect(result).toEqual(DEFAULT_SETTINGS);
+      expect(result).toEqual(createDefaultSettingsConfig());
     });
 
     it('should handle settings:update IPC call', async () => {
@@ -468,8 +469,8 @@ describe('Config Management', () => {
     it('should handle settings:reset IPC call', async () => {
       mockFs.existsSync.mockReturnValue(false);
 
-      const { init } = await import('@/main/settings');
-      const { DEFAULT_SETTINGS } = await import('@/types/settings');
+      const { init, createDefaultSettingsConfig } =
+        await import('@/main/settings');
       init();
 
       // First update settings
@@ -480,7 +481,7 @@ describe('Config Management', () => {
       const resetHandler = ipcHandlers['settings:reset'];
       const result = resetHandler();
 
-      expect(result).toEqual(DEFAULT_SETTINGS);
+      expect(result).toEqual(createDefaultSettingsConfig());
     });
 
     it('should handle app:getVersion IPC call', async () => {

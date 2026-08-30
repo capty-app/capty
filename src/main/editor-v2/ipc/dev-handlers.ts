@@ -3,13 +3,12 @@ import crypto from 'crypto';
 
 import { isDev } from '@/main/utils/env';
 import {
-  editorProjectService,
+  acknowledgeEditorV2Flush,
   getWindowData,
   recreateVideoEditorWindow,
 } from '@/main/capture/video/window-manager';
 import type {
   EditorV2FlushResult,
-  EditorV2WorkspaceSaveRequest,
   EditorVersionSwitchRequest,
   EditorVersionSwitchResult,
 } from '@/types/editor-v2';
@@ -82,34 +81,9 @@ export function registerEditorV2DevHandlers(): void {
   ipcMain.on(
     'editor-v2:project:flush-result',
     (event, result: EditorV2FlushResult) => {
-      resolveFlush(event.sender.id, result);
-    }
-  );
-
-  ipcMain.handle(
-    'editor-v2:workspace:save',
-    async (event, request: EditorV2WorkspaceSaveRequest) => {
-      const data = getWindowData(event.sender.id);
-      if (
-        !isDev ||
-        data?.editorVersion !== 'v2' ||
-        data.projectToken !== request.projectToken
-      ) {
-        return {
-          status: 'failed',
-          error: 'Unauthorized Editor V2 workspace save',
-        };
+      if (!acknowledgeEditorV2Flush(event.sender.id, result)) {
+        resolveFlush(event.sender.id, result);
       }
-      const opened = data.projectOpen ? await data.projectOpen : null;
-      const session = data.projectSession ?? opened?.session;
-      if (!session)
-        return { status: 'failed', error: 'Project session is unavailable' };
-      data.projectSession = session;
-      return editorProjectService.saveWorkspace(
-        session,
-        request.expectedRevision,
-        request.workspace
-      );
     }
   );
 
@@ -155,17 +129,25 @@ export function registerEditorV2DevHandlers(): void {
         };
       }
 
-      const flush = await requestFlush(
-        event.sender.id,
-        data.editorVersion === 'v1'
-          ? 'video-editor:switch-flush-request'
-          : 'editor-v2:project:flush-request'
-      );
-      if (flush.status !== 'flushed') {
-        return {
-          status: 'cancelled',
-          error: flush.error ?? 'Editor changes could not be saved',
-        };
+      if (data.editorVersion === 'v2') {
+        const confirmed = await data.closeCoordinator?.request('switch');
+        if (!confirmed) {
+          return {
+            status: 'cancelled',
+            error: 'Editor changes could not be saved',
+          };
+        }
+      } else {
+        const flush = await requestFlush(
+          event.sender.id,
+          'video-editor:switch-flush-request'
+        );
+        if (flush.status !== 'flushed') {
+          return {
+            status: 'cancelled',
+            error: flush.error ?? 'Editor changes could not be saved',
+          };
+        }
       }
       const recreated = await recreateVideoEditorWindow(
         event.sender.id,

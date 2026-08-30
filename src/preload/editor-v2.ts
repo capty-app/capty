@@ -6,6 +6,13 @@ import type {
   EditorV2FlushResult,
   EditorV2LoadErrorPayload,
   EditorV2LoadPayload,
+  EditorV2MutationUnfreezeRequest,
+  EditorV2ReloadRequest,
+  EditorV2ReloadResult,
+  EditorV2SaveCopyRequest,
+  EditorV2SaveCopyResult,
+  EditorV2SaveRequest,
+  EditorV2SaveResult,
   EditorV2WorkspaceSaveRequest,
   EditorV2WorkspaceSaveResult,
   EditorVersionSwitchRequest,
@@ -37,8 +44,37 @@ const bridge: EditorV2Bridge = {
     ipcRenderer.on('editor-v2:project:flush-request', handler);
     return () => ipcRenderer.off('editor-v2:project:flush-request', handler);
   },
+  onMutationUnfreeze(
+    listener: (request: EditorV2MutationUnfreezeRequest) => void
+  ) {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      request: EditorV2MutationUnfreezeRequest
+    ) => listener(request);
+    ipcRenderer.on('editor-v2:project:mutation-unfreeze', handler);
+    return () =>
+      ipcRenderer.off('editor-v2:project:mutation-unfreeze', handler);
+  },
   acknowledgeFlush(result: EditorV2FlushResult) {
     ipcRenderer.send('editor-v2:project:flush-result', result);
+  },
+  saveProject(request: EditorV2SaveRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:project:save',
+      request
+    ) as Promise<EditorV2SaveResult>;
+  },
+  reloadProject(request: EditorV2ReloadRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:project:reload',
+      request
+    ) as Promise<EditorV2ReloadResult>;
+  },
+  saveProjectCopy(request: EditorV2SaveCopyRequest) {
+    return ipcRenderer.invoke(
+      'editor-v2:project:save-copy',
+      request
+    ) as Promise<EditorV2SaveCopyResult>;
   },
   saveWorkspace(request: EditorV2WorkspaceSaveRequest) {
     return ipcRenderer.invoke(

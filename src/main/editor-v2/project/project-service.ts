@@ -16,6 +16,7 @@ import type {
   EditorProjectV2,
   EditorV2SaveResult,
   EditorV2Workspace,
+  EditorV2WorkspaceSaveResult,
   MediaFingerprint,
 } from '@/types/editor-v2';
 
@@ -66,13 +67,6 @@ export interface OpenEditorProjectResult {
     project: 'target' | 'temporary' | 'backup' | 'none';
     workspace: 'target' | 'temporary' | 'backup' | 'none';
   };
-}
-
-export interface SaveWorkspaceResult {
-  status: 'saved' | 'stale' | 'failed';
-  revision?: number;
-  diskRevision?: number;
-  error?: string;
 }
 
 export interface ConvertStandaloneProjectInput {
@@ -249,6 +243,12 @@ export class EditorProjectService {
   ): Promise<EditorV2SaveResult> {
     return this.enqueue(session, async () => {
       try {
+        if (session.staleRecoveryOpen) {
+          return {
+            status: 'failed',
+            error: 'Reload or save a copy before saving this project',
+          };
+        }
         const packagePath = getPackagePath(session);
         const current = await recoverAtomicJson(
           projectAtomicPaths(packagePath),
@@ -304,9 +304,15 @@ export class EditorProjectService {
     session: EditorProjectSession,
     expectedRevision: number,
     workspace: EditorV2Workspace
-  ): Promise<SaveWorkspaceResult> {
+  ): Promise<EditorV2WorkspaceSaveResult> {
     return this.enqueue(session, async () => {
       try {
+        if (session.staleRecoveryOpen) {
+          return {
+            status: 'failed',
+            error: 'Reload or save a copy before saving this workspace',
+          };
+        }
         const packagePath = getPackagePath(session);
         const current = await recoverAtomicJson(
           workspaceAtomicPaths(packagePath),
@@ -335,6 +341,100 @@ export class EditorProjectService {
           status: 'failed',
           error: error instanceof Error ? error.message : String(error),
         };
+      }
+    });
+  }
+
+  async reload(
+    session: EditorProjectSession
+  ): Promise<{ project: EditorProjectV2; workspace: EditorV2Workspace }> {
+    return this.enqueue(session, async () => {
+      const packagePath = getPackagePath(session);
+      const projectRecovery = await recoverAtomicJson(
+        projectAtomicPaths(packagePath),
+        isEditorProject
+      );
+      if (!projectRecovery.value) {
+        throw new Error('No valid Editor V2 project could be recovered');
+      }
+      await validateProjectLocatorAccess(
+        packagePath,
+        projectRecovery.value,
+        session.linkedPathAuthorization
+      );
+      const workspaceRecovery = await recoverAtomicJson(
+        workspaceAtomicPaths(packagePath),
+        isWorkspace
+      );
+      session.staleRecoveryOpen = false;
+      return {
+        project: projectRecovery.value,
+        workspace: workspaceRecovery.value ?? createDefaultEditorWorkspace(),
+      };
+    });
+  }
+
+  async saveCopy(
+    session: EditorProjectSession,
+    destinationPath: string,
+    project: EditorProjectV2,
+    workspace: EditorV2Workspace
+  ): Promise<void> {
+    return this.enqueue(session, async () => {
+      const packagePath = getPackagePath(session);
+      const resolvedDestination = path.resolve(destinationPath);
+      const relativeDestination = path.relative(
+        packagePath,
+        resolvedDestination
+      );
+      if (
+        relativeDestination === '' ||
+        (!relativeDestination.startsWith('..') &&
+          !path.isAbsolute(relativeDestination))
+      ) {
+        throw new Error('Save copy destination must be outside the project');
+      }
+      const stagingPath = `${resolvedDestination}.creating-${session.ownerId}`;
+      try {
+        await fs.access(resolvedDestination);
+        throw new Error('The destination project already exists');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+
+      await fs.rm(stagingPath, { recursive: true, force: true });
+      try {
+        await fs.cp(packagePath, stagingPath, { recursive: true });
+        const nextProject: EditorProjectV2 = {
+          ...structuredClone(project),
+          revision: 1,
+          updatedAt: new Date().toISOString(),
+        };
+        const nextWorkspace: EditorV2Workspace = {
+          ...structuredClone(workspace),
+          revision: 1,
+        };
+        if (!validateEditorProject(nextProject).valid) {
+          throw new Error('Project validation failed');
+        }
+        if (!validateEditorWorkspace(nextWorkspace)) {
+          throw new Error('Workspace validation failed');
+        }
+        await validateProjectLocatorAccess(
+          stagingPath,
+          nextProject,
+          session.linkedPathAuthorization
+        );
+        await ensureEditorV2ProjectDirectories(stagingPath);
+        for (const file of session.pendingManagedFiles) {
+          await writePendingManagedFile(stagingPath, file);
+        }
+        await writeJsonAtomic(projectAtomicPaths(stagingPath), nextProject);
+        await writeJsonAtomic(workspaceAtomicPaths(stagingPath), nextWorkspace);
+        await fs.rename(stagingPath, resolvedDestination);
+      } catch (error) {
+        await fs.rm(stagingPath, { recursive: true, force: true });
+        throw error;
       }
     });
   }
@@ -467,10 +567,32 @@ export class EditorProjectService {
     }
   }
 
+  async confirmCommittedRevisions(
+    session: EditorProjectSession,
+    projectRevision: number,
+    workspaceRevision: number
+  ): Promise<boolean> {
+    await (this.queues.get(session.lock.identity) ?? Promise.resolve());
+    const packagePath = getPackagePath(session);
+    const [project, workspace] = await Promise.all([
+      recoverAtomicJson(projectAtomicPaths(packagePath), isEditorProject),
+      recoverAtomicJson(workspaceAtomicPaths(packagePath), isWorkspace),
+    ]);
+    return (
+      (project.value?.revision ?? 0) === projectRevision &&
+      (workspace.value?.revision ?? 0) === workspaceRevision
+    );
+  }
+
   release(session: EditorProjectSession): boolean {
     if (session.pendingWrites > 0) return false;
     this.queues.delete(session.lock.identity);
     return this.locks.release(session.lock);
+  }
+
+  async releaseWhenIdle(session: EditorProjectSession): Promise<boolean> {
+    await (this.queues.get(session.lock.identity) ?? Promise.resolve());
+    return this.release(session);
   }
 
   private async detectDivergence(

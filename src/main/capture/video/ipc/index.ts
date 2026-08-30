@@ -10,6 +10,7 @@ import { registerKeyboardSoundHandlers } from './keyboard-sound-handlers';
 import { registerProjectHandlers } from './project-handlers';
 import { registerMusicHandlers } from './music-handlers';
 import { registerEditorV2DevHandlers } from '@/main/editor-v2/ipc/dev-handlers';
+import { registerEditorV2ProjectHandlers } from '@/main/editor-v2/ipc/project-handlers';
 import { isDev } from '@/main/utils/env';
 
 export function registerAllVideoEditorHandlers(): void {
@@ -24,7 +25,10 @@ export function registerAllVideoEditorHandlers(): void {
   registerKeyboardSoundHandlers();
   registerProjectHandlers();
   registerMusicHandlers();
-  if (isDev) registerEditorV2DevHandlers();
+  if (isDev) {
+    registerEditorV2ProjectHandlers();
+    registerEditorV2DevHandlers();
+  }
 }
 
 export {
@@ -40,4 +44,5 @@ export {
   registerProjectHandlers,
   registerMusicHandlers,
   registerEditorV2DevHandlers,
+  registerEditorV2ProjectHandlers,
 };

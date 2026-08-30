@@ -17,6 +17,9 @@ let loadListener: ((payload: EditorV2LoadPayload) => void) | null = null;
 let loadErrorListener: ((payload: EditorV2LoadErrorPayload) => void) | null =
   null;
 let flushListener: ((request: EditorV2FlushRequest) => void) | null = null;
+const saveProject = vi.fn();
+const reloadProject = vi.fn();
+const saveProjectCopy = vi.fn();
 const saveWorkspace = vi.fn();
 const acknowledgeFlush = vi.fn();
 const switchVersion = vi.fn();
@@ -42,6 +45,9 @@ beforeEach(() => {
   loadListener = null;
   loadErrorListener = null;
   flushListener = null;
+  saveProject.mockResolvedValue({ status: 'saved', revision: 1 });
+  reloadProject.mockResolvedValue({ status: 'cancelled' });
+  saveProjectCopy.mockResolvedValue({ status: 'cancelled' });
   saveWorkspace.mockResolvedValue({ status: 'saved', revision: 1 });
   switchVersion.mockResolvedValue({ status: 'switched' });
   const bridge: EditorV2Bridge = {
@@ -63,7 +69,11 @@ beforeEach(() => {
         flushListener = null;
       };
     },
+    onMutationUnfreeze: () => () => undefined,
     acknowledgeFlush,
+    saveProject,
+    reloadProject,
+    saveProjectCopy,
     saveWorkspace,
     switchVersion,
   };

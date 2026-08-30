@@ -30,6 +30,10 @@ describe('Editor V2 preload', () => {
       'onFlushRequest',
       'onLoad',
       'onLoadError',
+      'onMutationUnfreeze',
+      'reloadProject',
+      'saveProject',
+      'saveProjectCopy',
       'saveWorkspace',
       'switchVersion',
     ]);
@@ -43,6 +47,9 @@ describe('Editor V2 preload', () => {
     const bridge = exposeInMainWorld.mock.calls[0][1] as {
       onLoad: (listener: () => void) => () => void;
       acknowledgeFlush: (value: unknown) => void;
+      saveProject: (value: unknown) => Promise<unknown>;
+      reloadProject: (value: unknown) => Promise<unknown>;
+      saveProjectCopy: (value: unknown) => Promise<unknown>;
       saveWorkspace: (value: unknown) => Promise<unknown>;
       switchVersion: (value: unknown) => Promise<unknown>;
     };
@@ -59,6 +66,18 @@ describe('Editor V2 preload', () => {
     bridge.acknowledgeFlush({ requestId: 'request' });
     expect(send).toHaveBeenCalledWith('editor-v2:project:flush-result', {
       requestId: 'request',
+    });
+    await bridge.saveProject({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:project:save', {
+      projectToken: 'token',
+    });
+    await bridge.reloadProject({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:project:reload', {
+      projectToken: 'token',
+    });
+    await bridge.saveProjectCopy({ projectToken: 'token' });
+    expect(invoke).toHaveBeenCalledWith('editor-v2:project:save-copy', {
+      projectToken: 'token',
     });
     await bridge.saveWorkspace({ projectToken: 'token' });
     expect(invoke).toHaveBeenCalledWith('editor-v2:workspace:save', {

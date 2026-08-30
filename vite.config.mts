@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
-import electron from 'vite-plugin-electron/simple';
+import electron from 'vite-plugin-electron';
+import electronRenderer from 'vite-plugin-electron-renderer';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -20,47 +21,57 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    electron({
-      main: {
-        // Shortcut of `build.lib.entry`.
+    ...electron([
+      {
         entry: 'src/main/main.ts',
         vite: {
           resolve: { alias },
         },
       },
-      preload: {
-        // Shortcut of `build.rollupOptions.input`.
-        // Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
-        input: {
+      {
+        entry: {
           [EDITOR_V1_PRELOAD_ENTRY]: path.join(
             __dirname,
             'src/preload/preload.ts'
           ),
-          [EDITOR_V2_PRELOAD_ENTRY]: path.join(
-            __dirname,
-            'src/preload/editor-v2.ts'
-          ),
         },
+        onstart: ({ reload }) => reload(),
         vite: {
           resolve: { alias },
           build: {
             rollupOptions: {
               output: {
+                format: 'cjs',
                 entryFileNames: '[name].js',
+                inlineDynamicImports: true,
               },
             },
           },
         },
       },
-      // Ployfill the Electron and Node.js API for Renderer process.
-      // If you want use Node.js in Renderer process, the `nodeIntegration` needs to be enabled in the Main process.
-      // See 👉 https://github.com/electron-vite/vite-plugin-electron-renderer
-      renderer:
-        process.env.NODE_ENV === 'test'
-          ? // https://github.com/electron-vite/vite-plugin-electron-renderer/issues/78#issuecomment-2053600808
-            undefined
-          : {},
-    }),
+      {
+        entry: {
+          [EDITOR_V2_PRELOAD_ENTRY]: path.join(
+            __dirname,
+            'src/preload/editor-v2.ts'
+          ),
+        },
+        onstart: ({ reload }) => reload(),
+        vite: {
+          resolve: { alias },
+          build: {
+            rollupOptions: {
+              output: {
+                format: 'cjs',
+                entryFileNames: '[name].js',
+                inlineDynamicImports: true,
+              },
+            },
+          },
+        },
+      },
+    ]),
+    ...(process.env.NODE_ENV === 'test' ? [] : [electronRenderer()]),
   ],
   resolve: {
     alias,

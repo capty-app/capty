@@ -33,6 +33,26 @@ export type EditorV2SaveResult =
   | { status: 'stale'; diskRevision: number }
   | { status: 'failed'; error: string };
 
+export interface EditorV2ReloadRequest {
+  projectToken: EditorProjectToken;
+}
+
+export type EditorV2ReloadResult =
+  | { status: 'loaded'; project: EditorProjectV2; workspace: EditorV2Workspace }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+export interface EditorV2SaveCopyRequest {
+  projectToken: EditorProjectToken;
+  project: EditorProjectV2;
+  workspace: EditorV2Workspace;
+}
+
+export type EditorV2SaveCopyResult =
+  | { status: 'saved' }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
 export interface EditorV2WorkspaceSaveRequest {
   projectToken: EditorProjectToken;
   expectedRevision: number;
@@ -62,6 +82,10 @@ export interface EditorV2FlushRequest {
   requestId: string;
 }
 
+export interface EditorV2MutationUnfreezeRequest {
+  requestId: string;
+}
+
 export interface EditorV2FlushResult {
   requestId: string;
   status: 'flushed' | 'failed';
@@ -79,6 +103,8 @@ export type EditorVersionSwitchResult =
 
 export interface EditorV2IpcRequestMap {
   'editor-v2:project:save': EditorV2SaveRequest;
+  'editor-v2:project:reload': EditorV2ReloadRequest;
+  'editor-v2:project:save-copy': EditorV2SaveCopyRequest;
   'editor-v2:workspace:save': EditorV2WorkspaceSaveRequest;
   'editor-v2:export:start': EditorV2StartExportRequest;
   'editor-v2:export:cancel': EditorV2CancelExportRequest;
@@ -87,6 +113,8 @@ export interface EditorV2IpcRequestMap {
 
 export interface EditorV2IpcResultMap {
   'editor-v2:project:save': EditorV2SaveResult;
+  'editor-v2:project:reload': EditorV2ReloadResult;
+  'editor-v2:project:save-copy': EditorV2SaveCopyResult;
   'editor-v2:workspace:save': EditorV2WorkspaceSaveResult;
   'editor-v2:export:start': EditorV2StartExportResult;
   'editor-v2:export:cancel': { accepted: boolean };
@@ -97,6 +125,7 @@ export interface EditorV2IpcEventMap {
   'editor-v2:project:load': EditorV2LoadPayload;
   'editor-v2:project:load-error': EditorV2LoadErrorPayload;
   'editor-v2:project:flush-request': EditorV2FlushRequest;
+  'editor-v2:project:mutation-unfreeze': EditorV2MutationUnfreezeRequest;
   'editor-v2:export:progress': EditorExportProgress;
   'editor-v2:export:complete': EditorExportResult;
 }
@@ -109,7 +138,17 @@ export interface EditorV2Bridge {
   onFlushRequest: (
     listener: (request: EditorV2FlushRequest) => void
   ) => () => void;
+  onMutationUnfreeze: (
+    listener: (request: EditorV2MutationUnfreezeRequest) => void
+  ) => () => void;
   acknowledgeFlush: (result: EditorV2FlushResult) => void;
+  saveProject: (request: EditorV2SaveRequest) => Promise<EditorV2SaveResult>;
+  reloadProject: (
+    request: EditorV2ReloadRequest
+  ) => Promise<EditorV2ReloadResult>;
+  saveProjectCopy: (
+    request: EditorV2SaveCopyRequest
+  ) => Promise<EditorV2SaveCopyResult>;
   saveWorkspace: (
     request: EditorV2WorkspaceSaveRequest
   ) => Promise<EditorV2WorkspaceSaveResult>;

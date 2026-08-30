@@ -46,6 +46,7 @@ let mockIsDev = true;
 let windowData: TestWindowData | undefined;
 
 vi.mock('electron', () => ({
+  dialog: { showSaveDialog: vi.fn() },
   ipcMain: {
     handle: vi.fn((channel: string, handler: TestHandler) => {
       handlers[channel] = handler;
@@ -63,6 +64,7 @@ vi.mock('@/main/utils/env', () => ({
 }));
 
 vi.mock('@/main/capture/video/window-manager', () => ({
+  acknowledgeEditorV2Flush: vi.fn(() => false),
   editorProjectService: { saveWorkspace },
   getWindowData: vi.fn(() => windowData),
   recreateVideoEditorWindow,
@@ -99,6 +101,9 @@ beforeEach(async () => {
   recreateVideoEditorWindow.mockResolvedValue({});
   const { registerEditorV2DevHandlers } =
     await import('@/main/editor-v2/ipc/dev-handlers');
+  const { registerEditorV2ProjectHandlers } =
+    await import('@/main/editor-v2/ipc/project-handlers');
+  registerEditorV2ProjectHandlers();
   registerEditorV2DevHandlers();
 });
 

@@ -13,6 +13,7 @@ import type {
   ToolType,
   WindowFrameSettings,
 } from './editor';
+import type { SerializedCommandBinding } from './editor-v2';
 import type { HistoryConfig } from './history';
 import { DEFAULT_HISTORY_CONFIG } from './history';
 
@@ -237,6 +238,7 @@ export interface SettingsConfig {
     editor: EditorShortcuts;
     editorActions: EditorActionShortcuts;
     videoEditorSidebar: VideoEditorSidebarShortcuts;
+    editorV2: SerializedCommandBinding[];
   };
   editor: EditorPreferences;
   wallpaper: {
@@ -446,6 +448,7 @@ export const DEFAULT_SETTINGS: SettingsConfig = {
       'first-frame': 'f',
       export: 'e',
     },
+    editorV2: [],
   },
   editor: {
     lastTool: 'select',

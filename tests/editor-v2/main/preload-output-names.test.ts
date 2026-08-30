@@ -22,6 +22,7 @@ describe('editor preload output names', () => {
     expect(config).toContain('[EDITOR_V1_PRELOAD_ENTRY]');
     expect(config).toContain('[EDITOR_V2_PRELOAD_ENTRY]');
     expect(config).toContain("entryFileNames: '[name].js'");
+    expect(config.match(/inlineDynamicImports: true/g)).toHaveLength(2);
     expect(config).toContain('src/preload/editor-v2.ts');
   });
 });

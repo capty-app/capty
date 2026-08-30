@@ -413,6 +413,64 @@ describe('Editor V2 project service', () => {
     expect(service.release(opened.session)).toBe(true);
   });
 
+  it('reloads a newer disk revision after stale save without overwriting it', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Stale.capty');
+    await fs.mkdir(packagePath);
+    await writeProject(packagePath);
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', undefined);
+    const external = { ...createProject('External'), revision: 5 };
+    await writeProject(packagePath, external);
+
+    await expect(
+      service.saveProject(
+        opened.session,
+        opened.project.revision,
+        createProject('Local')
+      )
+    ).resolves.toEqual({ status: 'stale', diskRevision: 5 });
+    expect(opened.session.staleRecoveryOpen).toBe(true);
+    await expect(
+      service.saveProject(opened.session, 5, createProject('Overwrite'))
+    ).resolves.toEqual({
+      status: 'failed',
+      error: 'Reload or save a copy before saving this project',
+    });
+    const reloaded = await service.reload(opened.session);
+    expect(reloaded.project).toMatchObject({ name: 'External', revision: 5 });
+    expect(opened.session.staleRecoveryOpen).toBe(false);
+    expect(service.release(opened.session)).toBe(true);
+  });
+
+  it('saves a non-destructive package copy with independent revisions', async () => {
+    const root = await createTemporaryDirectory();
+    const packagePath = path.join(root, 'Original.capty');
+    const copyPath = path.join(root, 'Copy.capty');
+    await fs.mkdir(packagePath);
+    await fs.writeFile(path.join(packagePath, 'recording.mov'), 'legacy');
+    await writeProject(packagePath);
+    const service = new EditorProjectService();
+    const opened = await service.open(packagePath, 'window-1', undefined);
+    const copiedProject = { ...opened.project, name: 'Copied edits' };
+
+    await service.saveCopy(
+      opened.session,
+      copyPath,
+      copiedProject,
+      opened.workspace
+    );
+    expect(
+      await fs.readFile(path.join(copyPath, 'recording.mov'), 'utf-8')
+    ).toBe('legacy');
+    const copyService = new EditorProjectService();
+    const copy = await copyService.open(copyPath, 'copy-window', undefined);
+    expect(copy.project).toMatchObject({ name: 'Copied edits', revision: 1 });
+    expect(copy.workspace.revision).toBe(1);
+    expect(service.release(opened.session)).toBe(true);
+    expect(copyService.release(copy.session)).toBe(true);
+  });
+
   it('converts a standalone source into a V2 package by managed copy', async () => {
     const root = await createTemporaryDirectory();
     const sourcePath = path.join(root, 'source.mov');

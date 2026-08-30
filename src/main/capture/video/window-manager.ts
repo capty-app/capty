@@ -16,12 +16,13 @@ import {
   EDITOR_V2_PRELOAD_FILE,
 } from '@/main/editor-v2/preload-files';
 import { LegacyFfmpegProbeService } from '@/main/editor-v2/project/legacy-media-probe';
+import { EditorCloseCoordinator } from '@/main/editor-v2/project/close-coordinator';
 import type { EditorProjectLocation } from '@/types/editor-project';
 import type {
   EditorProjectSession,
   OpenEditorProjectResult,
 } from '@/main/editor-v2/project/project-service';
-import type { EditorVersion } from '@/types/editor-v2';
+import type { EditorV2FlushResult, EditorVersion } from '@/types/editor-v2';
 
 export interface VideoEditorWindowData {
   window: BrowserWindow;
@@ -33,6 +34,9 @@ export interface VideoEditorWindowData {
   projectToken?: string;
   projectSession?: EditorProjectSession;
   projectOpen?: Promise<OpenEditorProjectResult>;
+  closeCoordinator?: EditorCloseCoordinator;
+  activeExportJobId?: string;
+  cancelActiveExport?: (jobId: string) => Promise<void>;
 }
 
 interface CreateVideoEditorWindowOptions {
@@ -197,6 +201,17 @@ export function getVideoEditorWindowsCount(): number {
   return videoEditorWindows.size;
 }
 
+export function acknowledgeEditorV2Flush(
+  webContentsId: number,
+  result: EditorV2FlushResult
+): boolean {
+  return (
+    videoEditorWindows
+      .get(webContentsId)
+      ?.closeCoordinator?.acknowledge(result) ?? false
+  );
+}
+
 export function createVideoEditorWindow(
   inputPath: string,
   options: CreateVideoEditorWindowOptions = {}
@@ -274,6 +289,75 @@ export function createVideoEditorWindow(
     projectToken,
   };
   if (editorVersion === 'v2') {
+    data.closeCoordinator = new EditorCloseCoordinator({
+      sendFlush: request => {
+        if (!newWindow.isDestroyed()) {
+          newWindow.webContents.send(
+            'editor-v2:project:flush-request',
+            request
+          );
+        }
+      },
+      verifyFlush: async result => {
+        const opened = data.projectOpen ? await data.projectOpen : null;
+        const session = data.projectSession ?? opened?.session;
+        if (!session) return false;
+        data.projectSession = session;
+        return projectService.confirmCommittedRevisions(
+          session,
+          result.projectRevision,
+          result.workspaceRevision
+        );
+      },
+      onCancelled: requestId => {
+        if (!newWindow.isDestroyed()) {
+          newWindow.webContents.send('editor-v2:project:mutation-unfreeze', {
+            requestId: requestId ?? '',
+          });
+        }
+      },
+      isRendererAvailable: () =>
+        !newWindow.isDestroyed() && !newWindow.webContents.isDestroyed(),
+      isExportActive: () => data.isExporting,
+      chooseExportDecision: async () => {
+        const result = await dialog.showMessageBox(newWindow, {
+          type: 'warning',
+          message: 'An export is still running',
+          detail: 'Cancel the export before closing the editor?',
+          buttons: ['Cancel Export and Close', 'Keep Exporting'],
+          defaultId: 1,
+          cancelId: 1,
+        });
+        return result.response === 0
+          ? 'cancel-export-and-close'
+          : 'keep-exporting';
+      },
+      cancelExport: async () => {
+        const jobId = data.activeExportJobId;
+        if (!jobId || !data.cancelActiveExport) {
+          throw new Error('The active export cannot be cancelled safely');
+        }
+        await data.cancelActiveExport(jobId);
+        data.activeExportJobId = undefined;
+        data.isExporting = false;
+      },
+      chooseFailureDecision: async (error, allowDiscard) => {
+        const buttons = allowDiscard
+          ? ['Retry', 'Discard and Close', 'Cancel']
+          : ['Retry', 'Cancel'];
+        const result = await dialog.showMessageBox(newWindow, {
+          type: 'error',
+          message: 'Editor changes could not be saved',
+          detail: error,
+          buttons,
+          defaultId: 0,
+          cancelId: buttons.length - 1,
+        });
+        if (result.response === 0) return 'retry';
+        if (allowDiscard && result.response === 1) return 'discard';
+        return 'cancel';
+      },
+    });
     data.projectOpen = openV2Project(projectLocation, projectToken);
     data.projectOpen
       .then(opened => {
@@ -341,18 +425,51 @@ export function createVideoEditorWindow(
     newWindow.focus();
   });
 
-  newWindow.on('close', () => {
+  newWindow.webContents.on('before-input-event', (event, input) => {
+    if (editorVersion !== 'v2') return;
+    const reloadRequested =
+      input.type === 'keyDown' &&
+      input.key.toLowerCase() === 'r' &&
+      (input.meta || input.control);
+    if (!reloadRequested) return;
+    event.preventDefault();
+    void data.closeCoordinator?.request('reload').then(confirmed => {
+      if (!confirmed || newWindow.isDestroyed()) return;
+      data.closeCoordinator?.reset();
+      newWindow.webContents.reload();
+    });
+  });
+
+  newWindow.webContents.on('render-process-gone', () => {
+    videoEditorWindows
+      .get(webContentsId)
+      ?.closeCoordinator?.rendererUnavailable();
+  });
+
+  newWindow.on('close', event => {
     const windowData = videoEditorWindows.get(webContentsId);
     if (!windowData) return;
-    if (!windowData.isClosingConfirmed && !newWindow.isDestroyed()) {
+    if (
+      windowData.editorVersion !== 'v2' ||
+      windowData.isClosingConfirmed ||
+      !windowData.closeCoordinator
+    ) {
       windowData.isClosingConfirmed = true;
+      return;
     }
+    event.preventDefault();
+    void windowData.closeCoordinator.request('close').then(confirmed => {
+      if (!confirmed || newWindow.isDestroyed()) return;
+      windowData.isClosingConfirmed = true;
+      newWindow.close();
+    });
   });
 
   newWindow.on('closed', () => {
     const windowData = videoEditorWindows.get(webContentsId);
-    if (windowData?.projectSession)
-      projectService.release(windowData.projectSession);
+    if (windowData?.projectSession) {
+      void projectService.releaseWhenIdle(windowData.projectSession);
+    }
     videoEditorWindows.delete(webContentsId);
   });
 
@@ -384,6 +501,7 @@ export async function recreateVideoEditorWindow(
     }
   );
   if (!nextWindow) {
+    data.closeCoordinator?.reset();
     videoEditorWindows.set(webContentsId, data);
     return;
   }
