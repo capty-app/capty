@@ -15,6 +15,7 @@ import type {
   EditorV2MediaImportResult,
   EditorV2MediaRelinkResult,
   EditorV2MediaRevealResult,
+  EditorV2MediaStatusRequest,
   EditorV2MediaStatusResult,
   EditorV2MutationUnfreezeRequest,
   EditorV2ReloadRequest,
@@ -104,7 +105,7 @@ const bridge: EditorV2Bridge = {
       request
     ) as Promise<EditorV2MediaImportResult>;
   },
-  getMediaStatus(request: EditorV2MediaAssetRequest) {
+  getMediaStatus(request: EditorV2MediaStatusRequest) {
     return ipcRenderer.invoke(
       'editor-v2:media:status',
       request

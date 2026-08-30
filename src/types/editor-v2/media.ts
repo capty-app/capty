@@ -1,5 +1,8 @@
 import type { Rational, TimelineTick } from './time';
 
+export type MediaSourceRole =
+  'primary' | 'camera-video' | 'system-audio' | 'microphone-audio';
+
 export interface MediaFingerprint {
   byteLength: number;
   sha256: string;
@@ -147,6 +150,8 @@ export type MediaAvailability = 'available' | 'missing' | 'changed' | 'error';
 
 export interface MediaAssetStatus {
   assetId: string;
+  sourceStreamId?: string;
+  sourceRole?: MediaSourceRole;
   availability: MediaAvailability;
   mediaUrl?: string;
   thumbnailUrl?: string;

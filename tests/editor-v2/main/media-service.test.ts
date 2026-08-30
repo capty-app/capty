@@ -70,17 +70,19 @@ const createService = (thumbnailGenerate = vi.fn()) => {
   thumbnailGenerate.mockImplementation(async (_source, output) => {
     await fs.writeFile(output, 'thumbnail');
   });
+  const registry = new MediaUrlRegistry();
   return {
     service: new MediaService(
       new MediaMetadataService(imageRunner),
       new ThumbnailService({ generate: thumbnailGenerate }),
       new WaveformService({ generate: vi.fn().mockResolvedValue([0, 1, 0]) }),
-      new MediaUrlRegistry(),
+      registry,
       (() => {
         let id = 0;
         return () => String(++id);
       })()
     ),
+    registry,
     thumbnailGenerate,
   };
 };
@@ -226,6 +228,105 @@ describe('Editor V2 media service', () => {
       assetId: imported.asset.id,
       availability: 'missing',
     });
+  });
+
+  it('authorizes the locator that owns a requested Capty stream', async () => {
+    const root = await createRoot();
+    const packagePath = path.join(root, 'Project.capty');
+    const recordingPath = path.join(packagePath, 'recording.mov');
+    const cameraPath = path.join(packagePath, 'camera.mov');
+    await fs.mkdir(packagePath);
+    await Promise.all([
+      fs.writeFile(recordingPath, 'recording'),
+      fs.writeFile(cameraPath, 'camera'),
+    ]);
+    const session = createSession(packagePath);
+    const { service, registry, thumbnailGenerate } = createService();
+    const project = createProject();
+    project.assets.recording = {
+      id: 'recording',
+      kind: 'capty-recording',
+      name: 'Recording',
+      locator: {
+        kind: 'legacy-package-read-only',
+        relativePath: 'recording.mov',
+        fingerprint: { byteLength: 9, sha256: 'unused' },
+      },
+      importedAt: '2026-08-30T00:00:00.000Z',
+      durationTicks: 1_000,
+      width: 1920,
+      height: 1080,
+      frameRate: { numerator: 60, denominator: 1 },
+      videoStreams: [
+        {
+          id: 'screen-stream',
+          codec: 'h264',
+          durationTicks: 1_000,
+          width: 1920,
+          height: 1080,
+          frameRate: { numerator: 60, denominator: 1 },
+          hasAlpha: false,
+        },
+      ],
+      audioStreams: [],
+      sources: {
+        cameraVideo: {
+          kind: 'video',
+          locator: { kind: 'managed', relativePath: 'camera.mov' },
+          recordingOffsetTicks: 100,
+          durationTicks: 700,
+          streams: [
+            {
+              id: 'screen-stream',
+              codec: 'h264',
+              durationTicks: 700,
+              width: 640,
+              height: 480,
+              frameRate: { numerator: 30, denominator: 1 },
+              hasAlpha: false,
+            },
+          ],
+        },
+      },
+    };
+
+    const status = await service.resolveStatus(
+      session,
+      9,
+      project,
+      'recording',
+      false,
+      'screen-stream',
+      'camera-video'
+    );
+    expect(status).toMatchObject({
+      assetId: 'recording',
+      sourceStreamId: 'screen-stream',
+      sourceRole: 'camera-video',
+      availability: 'available',
+    });
+    expect(registry.resolve(status.mediaUrl ?? '')?.filePath).toBe(cameraPath);
+    expect(thumbnailGenerate).not.toHaveBeenCalled();
+    await expect(
+      service.resolveStatus(
+        session,
+        9,
+        project,
+        'recording',
+        false,
+        'screen-stream'
+      )
+    ).rejects.toThrow('has ambiguous stream screen-stream');
+    await expect(
+      service.resolveStatus(
+        session,
+        9,
+        project,
+        'recording',
+        false,
+        'missing-stream'
+      )
+    ).rejects.toThrow('has no stream missing-stream');
   });
 
   it('relinks missing media only after compatible decode validation', async () => {

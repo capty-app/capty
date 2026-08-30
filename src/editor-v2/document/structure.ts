@@ -284,6 +284,13 @@ const isEffect = (value: unknown): boolean => {
   }
 };
 
+const isMediaSourceRole = (value: unknown): boolean =>
+  value === undefined ||
+  value === 'primary' ||
+  value === 'camera-video' ||
+  value === 'system-audio' ||
+  value === 'microphone-audio';
+
 export const isClipStructure = (value: Record<string, unknown>): boolean => {
   const base =
     typeof value.id === 'string' &&
@@ -302,8 +309,9 @@ export const isClipStructure = (value: Record<string, unknown>): boolean => {
 
   if (value.kind === 'video') {
     return (
-      value.sourceStreamId === undefined ||
-      typeof value.sourceStreamId === 'string'
+      (value.sourceStreamId === undefined ||
+        typeof value.sourceStreamId === 'string') &&
+      isMediaSourceRole(value.sourceRole)
     );
   }
   if (value.kind === 'image') return true;
@@ -311,6 +319,7 @@ export const isClipStructure = (value: Record<string, unknown>): boolean => {
     return (
       (value.sourceStreamId === undefined ||
         typeof value.sourceStreamId === 'string') &&
+      isMediaSourceRole(value.sourceRole) &&
       isFiniteNumber(value.gain) &&
       isNonNegativeInteger(value.fadeInTicks) &&
       isNonNegativeInteger(value.fadeOutTicks)

@@ -1,5 +1,10 @@
 import type { EditorProjectV2 } from './document';
-import type { MediaAsset, MediaAssetStatus, MediaImportPolicy } from './media';
+import type {
+  MediaAsset,
+  MediaAssetStatus,
+  MediaImportPolicy,
+  MediaSourceRole,
+} from './media';
 import type {
   EditorExportProgress,
   EditorExportResult,
@@ -103,6 +108,11 @@ export interface EditorV2MediaAssetRequest {
   assetId: string;
 }
 
+export interface EditorV2MediaStatusRequest extends EditorV2MediaAssetRequest {
+  sourceStreamId?: string;
+  sourceRole?: MediaSourceRole;
+}
+
 export type EditorV2MediaStatusResult =
   | { status: 'resolved'; asset: MediaAssetStatus }
   | { status: 'failed'; error: string };
@@ -178,7 +188,7 @@ export interface EditorV2IpcRequestMap {
   'editor-v2:project:create': EditorV2CreateProjectRequest;
   'editor-v2:workspace:save': EditorV2WorkspaceSaveRequest;
   'editor-v2:media:import': EditorV2MediaImportRequest;
-  'editor-v2:media:status': EditorV2MediaAssetRequest;
+  'editor-v2:media:status': EditorV2MediaStatusRequest;
   'editor-v2:media:relink': EditorV2MediaAssetRequest;
   'editor-v2:media:reveal': EditorV2MediaAssetRequest;
   'editor-v2:media:remove-managed': EditorV2ManagedMediaRemoveRequest;
@@ -241,7 +251,7 @@ export interface EditorV2Bridge {
     request: EditorV2MediaImportRequest
   ) => Promise<EditorV2MediaImportResult>;
   getMediaStatus: (
-    request: EditorV2MediaAssetRequest
+    request: EditorV2MediaStatusRequest
   ) => Promise<EditorV2MediaStatusResult>;
   relinkMedia: (
     request: EditorV2MediaAssetRequest

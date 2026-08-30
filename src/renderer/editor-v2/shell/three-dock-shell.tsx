@@ -5,7 +5,7 @@ import DockResizer from './dock-resizer';
 import EditorTitleBar from './editor-title-bar';
 import InspectorDock from './inspector-dock';
 import TimelineDock from './timeline-dock';
-import ViewerPlaceholder from './viewer-placeholder';
+import EditorV2Viewer from '../viewer/editor-v2-viewer';
 import type { EditorProjectV2, EditorV2Workspace } from '@/types/editor-v2';
 
 interface ThreeDockShellProps {
@@ -164,7 +164,7 @@ export default function ThreeDockShell({
               />
             </>
           ) : null}
-          <ViewerPlaceholder project={project} />
+          <EditorV2Viewer projectToken={projectToken} project={project} />
           {!workspace.rightDock.collapsed ? (
             <>
               <DockResizer

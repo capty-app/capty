@@ -18,6 +18,7 @@ import type {
   MediaAssetStatus,
   MediaImportPolicy,
   MediaLocator,
+  MediaSourceRole,
 } from '@/types/editor-v2';
 
 import { fingerprintMediaFile } from './media-fingerprint';
@@ -45,6 +46,67 @@ const isMissingError = (error: unknown): boolean =>
 
 const compatibleKinds = (asset: MediaAsset, replacement: MediaAsset): boolean =>
   asset.kind === replacement.kind && asset.kind !== 'capty-recording';
+
+const resolveAssetSourceLocator = (
+  asset: MediaAsset,
+  sourceStreamId: string | undefined,
+  sourceRole: MediaSourceRole | undefined
+): MediaLocator => {
+  if (asset.kind === 'image') {
+    if (sourceStreamId || (sourceRole && sourceRole !== 'primary')) {
+      throw new Error(`Image asset ${asset.id} has no media streams`);
+    }
+    return asset.locator;
+  }
+  if (!sourceStreamId && !sourceRole) return asset.locator;
+  const primaryMatches =
+    !sourceStreamId ||
+    asset.audioStreams.some(stream => stream.id === sourceStreamId) ||
+    (asset.kind !== 'audio' &&
+      asset.videoStreams.some(stream => stream.id === sourceStreamId));
+  if (sourceRole === 'primary') {
+    if (!primaryMatches) {
+      throw new Error(
+        `Asset ${asset.id} has no primary stream ${sourceStreamId}`
+      );
+    }
+    return asset.locator;
+  }
+  if (asset.kind !== 'capty-recording') {
+    if (sourceRole || !primaryMatches) {
+      throw new Error(`Asset ${asset.id} has no stream ${sourceStreamId}`);
+    }
+    return asset.locator;
+  }
+  const matches: Array<{ role: MediaSourceRole; locator: MediaLocator }> = [];
+  if (!sourceRole && primaryMatches) {
+    matches.push({ role: 'primary', locator: asset.locator });
+  }
+  const addSourceMatch = (
+    role: MediaSourceRole,
+    source:
+      | typeof asset.sources.cameraVideo
+      | typeof asset.sources.systemAudio
+      | typeof asset.sources.microphoneAudio
+  ) => {
+    if (!source || (sourceRole && sourceRole !== role)) return;
+    if (
+      sourceStreamId &&
+      !source.streams.some(stream => stream.id === sourceStreamId)
+    ) {
+      return;
+    }
+    matches.push({ role, locator: source.locator });
+  };
+  addSourceMatch('camera-video', asset.sources.cameraVideo);
+  addSourceMatch('system-audio', asset.sources.systemAudio);
+  addSourceMatch('microphone-audio', asset.sources.microphoneAudio);
+  if (matches.length !== 1) {
+    const reason = matches.length > 1 ? 'ambiguous stream' : 'no stream';
+    throw new Error(`Asset ${asset.id} has ${reason} ${sourceStreamId}`);
+  }
+  return matches[0].locator;
+};
 
 const replacementSupportsProjectReferences = (
   project: EditorProjectV2,
@@ -211,47 +273,58 @@ export class MediaService {
     ownerId: number,
     project: Pick<EditorProjectV2, 'assets'>,
     assetId: string,
-    forceCache = false
+    forceCache = false,
+    sourceStreamId?: string,
+    sourceRole?: MediaSourceRole
   ): Promise<MediaAssetStatus> {
     const asset = project.assets[assetId];
     if (!asset) throw new Error(`Asset ${assetId} does not exist`);
+    const identity = { assetId, sourceStreamId, sourceRole };
+    const locator = resolveAssetSourceLocator(
+      asset,
+      sourceStreamId,
+      sourceRole
+    );
     let sourcePath: string;
     try {
-      sourcePath = await resolveAuthorizedMediaLocator(session, asset.locator);
+      sourcePath = await resolveAuthorizedMediaLocator(session, locator);
     } catch (error) {
-      if (isMissingError(error)) return { assetId, availability: 'missing' };
+      if (isMissingError(error))
+        return { ...identity, availability: 'missing' };
       throw error;
     }
 
     try {
       const stats = await fs.stat(sourcePath);
-      if (!stats.isFile()) return { assetId, availability: 'missing' };
+      if (!stats.isFile()) return { ...identity, availability: 'missing' };
     } catch (error) {
-      if (isMissingError(error)) return { assetId, availability: 'missing' };
+      if (isMissingError(error))
+        return { ...identity, availability: 'missing' };
       throw error;
     }
 
-    if (asset.locator.kind !== 'managed') {
+    if (locator.kind !== 'managed') {
       let fingerprint;
       try {
         fingerprint = await fingerprintMediaFile(sourcePath);
       } catch (error) {
-        if (isMissingError(error)) return { assetId, availability: 'missing' };
+        if (isMissingError(error))
+          return { ...identity, availability: 'missing' };
         throw error;
       }
-      if (!fingerprintsMatch(fingerprint, asset.locator.fingerprint)) {
-        return { assetId, availability: 'changed' };
+      if (!fingerprintsMatch(fingerprint, locator.fingerprint)) {
+        return { ...identity, availability: 'changed' };
       }
     }
 
     const packagePath = getSessionPackagePath(session);
     const status: MediaAssetStatus = {
-      assetId,
+      ...identity,
       availability: 'available',
       mediaUrl: this.urls.authorize(ownerId, sourcePath),
     };
     const cacheErrors: string[] = [];
-    if (asset.kind !== 'audio') {
+    if (!sourceStreamId && asset.kind !== 'audio') {
       try {
         const thumbnail = await this.thumbnails.ensure(
           packagePath,
@@ -267,9 +340,10 @@ export class MediaService {
       }
     }
     if (
-      asset.kind === 'audio' ||
-      asset.kind === 'video' ||
-      (asset.kind === 'capty-recording' && asset.audioStreams.length > 0)
+      !sourceStreamId &&
+      (asset.kind === 'audio' ||
+        asset.kind === 'video' ||
+        (asset.kind === 'capty-recording' && asset.audioStreams.length > 0))
     ) {
       try {
         const waveform = await this.waveforms.ensure(

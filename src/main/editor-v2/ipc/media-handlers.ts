@@ -14,6 +14,7 @@ import type {
   EditorV2MediaImportResult,
   EditorV2MediaRelinkResult,
   EditorV2MediaRevealResult,
+  EditorV2MediaStatusRequest,
   EditorV2MediaStatusResult,
 } from '@/types/editor-v2';
 
@@ -93,7 +94,7 @@ export function registerEditorV2MediaHandlers(): void {
     'editor-v2:media:status',
     async (
       event,
-      request: EditorV2MediaAssetRequest
+      request: EditorV2MediaStatusRequest
     ): Promise<EditorV2MediaStatusResult> => {
       const authorized = await authorizeEditorV2Sender(
         event.sender.id,
@@ -112,7 +113,10 @@ export function registerEditorV2MediaHandlers(): void {
             authorized.session,
             event.sender.id,
             project,
-            request.assetId
+            request.assetId,
+            false,
+            request.sourceStreamId,
+            request.sourceRole
           ),
         };
       } catch (error) {

@@ -1,4 +1,5 @@
 import type { ClipEffect } from './effects';
+import type { MediaSourceRole } from './media';
 import type { Rational, TimelineTick } from './time';
 
 export interface EditorClipBase {
@@ -18,6 +19,7 @@ export interface EditorClipBase {
 export interface VideoClip extends EditorClipBase {
   kind: 'video';
   sourceStreamId?: string;
+  sourceRole?: MediaSourceRole;
 }
 
 export interface ImageClip extends EditorClipBase {
@@ -27,6 +29,7 @@ export interface ImageClip extends EditorClipBase {
 export interface AudioClip extends EditorClipBase {
   kind: 'audio';
   sourceStreamId?: string;
+  sourceRole?: MediaSourceRole;
   gain: number;
   fadeInTicks: TimelineTick;
   fadeOutTicks: TimelineTick;
