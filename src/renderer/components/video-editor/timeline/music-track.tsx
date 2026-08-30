@@ -126,7 +126,7 @@ export default function MusicTrack({
   const isRemovable = track.source === 'music';
 
   return (
-    <TrackRow>
+    <TrackRow label={{ icon: Icon, text: track.name }}>
       <ContextMenu>
         <ContextMenuTrigger className="block h-full">
           <Track

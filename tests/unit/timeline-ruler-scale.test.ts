@@ -7,6 +7,7 @@ import {
   MAX_PIXELS_PER_SECOND,
   MIN_PIXELS_PER_SECOND,
   TIMELINE_H_PADDING,
+  TIMELINE_END_PADDING,
 } from '@/renderer/components/video-editor/timeline/timeline-constants';
 
 describe('getFitToViewPixelsPerSecond', () => {
@@ -18,10 +19,12 @@ describe('getFitToViewPixelsPerSecond', () => {
       displayDuration
     );
 
-    expect(pixelsPerSecond).toBe(100);
-    expect(displayDuration * pixelsPerSecond + TIMELINE_H_PADDING * 2).toBe(
-      containerWidth
-    );
+    expect(pixelsPerSecond).toBe(98);
+    expect(
+      displayDuration * pixelsPerSecond +
+        TIMELINE_H_PADDING +
+        TIMELINE_END_PADDING
+    ).toBe(containerWidth);
   });
 
   it('fits the retained display duration instead of the shorter content', () => {
@@ -32,9 +35,11 @@ describe('getFitToViewPixelsPerSecond', () => {
       retainedDisplayDuration
     );
 
-    expect(pixelsPerSecond).toBe(50);
+    expect(pixelsPerSecond).toBe(49);
     expect(
-      retainedDisplayDuration * pixelsPerSecond + TIMELINE_H_PADDING * 2
+      retainedDisplayDuration * pixelsPerSecond +
+        TIMELINE_H_PADDING +
+        TIMELINE_END_PADDING
     ).toBe(containerWidth);
   });
 

@@ -6,6 +6,7 @@ import {
   MIN_PIXELS_PER_SECOND,
   MAX_PIXELS_PER_SECOND,
   TIMELINE_H_PADDING,
+  TIMELINE_END_PADDING,
 } from './timeline-constants';
 
 const SCRUB_STEP = 1 / 120;
@@ -284,23 +285,21 @@ const TimelineTracks = forwardRef<HTMLDivElement, TimelineTracksProps>(
         <div
           className="relative flex flex-col gap-2 pt-4 pb-2"
           style={{
-            width: `${displayWidth + TIMELINE_H_PADDING * 2}px`,
+            width: `${displayWidth + TIMELINE_H_PADDING + TIMELINE_END_PADDING}px`,
             minWidth: '100%',
-            paddingLeft: TIMELINE_H_PADDING,
-            paddingRight: TIMELINE_H_PADDING,
           }}
         >
           {children}
 
           <div
             ref={ghostRef}
-            className="pointer-events-none absolute top-0 bottom-0 z-10"
+            className="pointer-events-none absolute top-0 bottom-0"
             style={{ display: 'none' }}
           >
-            <div className="bg-foreground/20 absolute top-4 bottom-0 left-0 w-px" />
+            <div className="bg-foreground/20 absolute top-4 bottom-0 left-0 z-10 w-px" />
             <span
               ref={ghostChipRef}
-              className="bg-secondary text-secondary-foreground border-border absolute top-0 left-0 -translate-x-1/2 rounded-md border px-1.5 font-mono text-xs tabular-nums"
+              className="bg-secondary text-secondary-foreground border-border absolute top-0 left-0 z-30 -translate-x-1/2 rounded-md border px-1.5 font-mono text-xs tabular-nums"
             />
           </div>
 

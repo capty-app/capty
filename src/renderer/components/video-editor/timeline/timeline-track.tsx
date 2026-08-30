@@ -230,7 +230,7 @@ export default function TimelineTrack({
     : 0;
 
   return (
-    <TrackRow className="relative" height={VIDEO_TRACK_HEIGHT}>
+    <TrackRow height={VIDEO_TRACK_HEIGHT} label={{ icon: Film, text: 'Video' }}>
       <Track
         ref={rowRef}
         segments={timelineSegments}

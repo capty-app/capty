@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTimeline } from './use-timeline';
 import { getMarkInterval } from './ruler-scale';
-import { TIMELINE_H_PADDING } from './timeline-constants';
+import { TIMELINE_H_PADDING, TIMELINE_END_PADDING } from './timeline-constants';
 
 interface TimelineRulerProps {
   totalDuration: number;
@@ -53,7 +53,9 @@ export default function TimelineRuler({
       >
         <div
           className="relative h-full"
-          style={{ width: `${totalWidth + TIMELINE_H_PADDING * 2}px` }}
+          style={{
+            width: `${totalWidth + TIMELINE_H_PADDING + TIMELINE_END_PADDING}px`,
+          }}
         >
           {marks.map(mark => (
             <div

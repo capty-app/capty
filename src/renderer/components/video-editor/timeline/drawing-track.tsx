@@ -130,7 +130,7 @@ export default function DrawingTrack({
   }, [onDelete, segment.id]);
 
   return (
-    <TrackRow>
+    <TrackRow label={{ icon: PenLine, text: 'Drawings' }}>
       <ContextMenu>
         <ContextMenuTrigger className="block h-full">
           <Track

@@ -112,7 +112,7 @@ const ZoomTrack = forwardRef<HTMLDivElement, ZoomTrackProps>(
     );
 
     return (
-      <TrackRow>
+      <TrackRow label={{ icon: ZoomIn, text: 'Zoom' }}>
         <ContextMenu>
           <ContextMenuTrigger
             onContextMenu={handleContextMenu}

@@ -2,6 +2,7 @@ import {
   MAX_PIXELS_PER_SECOND,
   MIN_PIXELS_PER_SECOND,
   TIMELINE_H_PADDING,
+  TIMELINE_END_PADDING,
 } from './timeline-constants';
 
 const MARK_INTERVALS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60];
@@ -13,7 +14,10 @@ export function getFitToViewPixelsPerSecond(
 ): number {
   if (displayDuration <= 0) return MIN_PIXELS_PER_SECOND;
 
-  const availableWidth = Math.max(0, containerWidth - TIMELINE_H_PADDING * 2);
+  const availableWidth = Math.max(
+    0,
+    containerWidth - TIMELINE_H_PADDING - TIMELINE_END_PADDING
+  );
   const target = availableWidth / displayDuration;
   return Math.max(
     MIN_PIXELS_PER_SECOND,
