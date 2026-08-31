@@ -6,10 +6,12 @@ interface UseEditorShortcutsProps {
   selectedSegmentId: string | null;
   selectedZoomId: string | null;
   selectedDrawingId: string | null;
+  selectedEqualizerId: string | null;
   segmentsLength: number;
   onDeleteSegment: () => void;
   onDeleteZoom: (id: string) => void;
   onDeleteDrawing: () => void;
+  onDeleteEqualizer: (id: string) => void;
   onDeleteVideo: () => void;
   onTogglePlayPause: () => void;
   onToggleCutTool: () => void;
@@ -36,10 +38,12 @@ export function useEditorShortcuts({
   selectedSegmentId,
   selectedZoomId,
   selectedDrawingId,
+  selectedEqualizerId,
   segmentsLength,
   onDeleteSegment,
   onDeleteZoom,
   onDeleteDrawing,
+  onDeleteEqualizer,
   onDeleteVideo,
   onTogglePlayPause,
   onToggleCutTool,
@@ -59,6 +63,7 @@ export function useEditorShortcuts({
 }: UseEditorShortcutsProps): void {
   const selectedZoomIdRef = useRef<string | null>(selectedZoomId);
   const selectedDrawingIdRef = useRef<string | null>(selectedDrawingId);
+  const selectedEqualizerIdRef = useRef<string | null>(selectedEqualizerId);
 
   useEffect(() => {
     selectedZoomIdRef.current = selectedZoomId;
@@ -67,6 +72,10 @@ export function useEditorShortcuts({
   useEffect(() => {
     selectedDrawingIdRef.current = selectedDrawingId;
   }, [selectedDrawingId]);
+
+  useEffect(() => {
+    selectedEqualizerIdRef.current = selectedEqualizerId;
+  }, [selectedEqualizerId]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -106,6 +115,12 @@ export function useEditorShortcuts({
         if (currentDrawingId) {
           e.preventDefault();
           onDeleteDrawing();
+          return;
+        }
+        const currentEqualizerId = selectedEqualizerIdRef.current;
+        if (currentEqualizerId) {
+          e.preventDefault();
+          onDeleteEqualizer(currentEqualizerId);
           return;
         }
       }
@@ -231,6 +246,7 @@ export function useEditorShortcuts({
       onDeleteSegment,
       onDeleteZoom,
       onDeleteDrawing,
+      onDeleteEqualizer,
       onDeleteVideo,
       onEscape,
       onTogglePlayPause,

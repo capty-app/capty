@@ -4,13 +4,22 @@ import { getWindowData } from '../window-manager';
 import { getEditorStatePath } from '../recording-project';
 import { generateInitialEditorState } from '../auto-zoom-generator';
 import type { VideoEditorState } from '@/types/video-editor-state';
+import {
+  isValidEqualizerSegments,
+  isValidEqualizerSettings,
+} from '@/types/equalizer';
+import { parseVideoFrameRate } from '@/types/video';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'number');
+  return Array.isArray(value) && value.every(isFiniteNumber);
 }
 
 function isLinePoints(
@@ -159,12 +168,28 @@ function isValidEditorState(state: unknown): state is VideoEditorState {
     return false;
   }
 
+  let timelineDuration = 0;
   for (const seg of s.segments) {
     if (!seg || typeof seg !== 'object') return false;
     const segment = seg as Record<string, unknown>;
     if (typeof segment.id !== 'string') return false;
-    if (typeof segment.originalStart !== 'number') return false;
-    if (typeof segment.originalEnd !== 'number') return false;
+    if (!isFiniteNumber(segment.originalStart)) return false;
+    if (!isFiniteNumber(segment.originalEnd)) return false;
+    if (
+      segment.originalStart < 0 ||
+      segment.originalEnd <= segment.originalStart
+    ) {
+      return false;
+    }
+    if (
+      segment.speed !== undefined &&
+      (!isFiniteNumber(segment.speed) || segment.speed <= 0)
+    ) {
+      return false;
+    }
+
+    const speed = isFiniteNumber(segment.speed) ? segment.speed : 1;
+    timelineDuration += (segment.originalEnd - segment.originalStart) / speed;
   }
 
   for (const zoom of s.zoomSegments) {
@@ -204,6 +229,27 @@ function isValidEditorState(state: unknown): state is VideoEditorState {
         return false;
       }
     }
+  }
+
+  if (
+    isRecord(s.firstFrame) &&
+    s.firstFrame.enabled === true &&
+    typeof s.firstFrame.imageData === 'string' &&
+    s.firstFrame.imageData.length > 0
+  ) {
+    const exportSettings = isRecord(s.exportSettings) ? s.exportSettings : null;
+    const frameRate = parseVideoFrameRate(exportSettings?.frameRate);
+    timelineDuration += 1 / frameRate;
+  }
+
+  if (
+    s.equalizerSegments !== undefined &&
+    !isValidEqualizerSegments(s.equalizerSegments, timelineDuration)
+  ) {
+    return false;
+  }
+  if (s.equalizer !== undefined && !isValidEqualizerSettings(s.equalizer)) {
+    return false;
   }
 
   return true;

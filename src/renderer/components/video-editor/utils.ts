@@ -1,5 +1,6 @@
 import type { Segment, VideoToTimelineResult } from './types';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EqualizerSegment } from '@/types/equalizer';
 import type { ZoomSegment } from '@/types/zoom';
 
 interface TimelineRange {
@@ -20,6 +21,7 @@ interface TimelineRangeSliceAdjustment {
   nextSegments: Segment[];
   zoomSegments: ZoomSegment[];
   drawingSegments: DrawingSegment[];
+  equalizerSegments: EqualizerSegment[];
   adjustment: TimelineRangeAdjustment;
   drawingMinDuration: number;
 }
@@ -28,6 +30,7 @@ export interface AdjustedTimelineRangeSlices {
   segments: Segment[];
   zoomSegments: ZoomSegment[];
   drawingSegments: DrawingSegment[];
+  equalizerSegments: EqualizerSegment[];
 }
 
 export interface SegmentBoundaryTransition {
@@ -127,6 +130,7 @@ export function adjustTimelineRangeSlices({
   nextSegments,
   zoomSegments,
   drawingSegments,
+  equalizerSegments,
   adjustment,
   drawingMinDuration,
 }: TimelineRangeSliceAdjustment): AdjustedTimelineRangeSlices {
@@ -137,6 +141,7 @@ export function adjustTimelineRangeSlices({
       ...adjustment,
       minDuration: drawingMinDuration,
     }),
+    equalizerSegments: adjustTimelineRanges(equalizerSegments, adjustment),
   };
 }
 

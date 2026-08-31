@@ -14,6 +14,7 @@ import { deleteHistoryItem, getHistoryItemByPath } from '@/main/history';
 import { openScreenshotEditor } from '@/main/capture/screenshot/open-editor';
 import { createVideoEditorWindow } from '@/main/capture/video/video-editor';
 import { deleteVideo } from '@/main/capture/video/delete-video';
+import { deleteMediaPathsForSender } from '@/main/capture/video/media-sources';
 import * as settings from '@/main/settings';
 import { registerPreviewExportIpc } from './video-export';
 import {
@@ -32,6 +33,7 @@ import type { ContentType, PreviewDisplayInfo } from '@/types/capture-preview';
 
 interface PreviewWindowData {
   window: BrowserWindow;
+  webContentsId: number;
   filePath: string;
   contentType: ContentType;
   historyId?: string;
@@ -189,23 +191,24 @@ function handlePreviewMoved(previewData: PreviewWindowData): void {
 }
 
 function removePreviewWindow(webContentsId: number): void {
+  deleteMediaPathsForSender(webContentsId);
   const index = previewWindows.findIndex(
-    data =>
-      data.window.isDestroyed() || data.window.webContents.id === webContentsId
+    data => data.webContentsId === webContentsId
   );
+  if (index === -1) return;
 
-  if (index !== -1) {
-    previewWindows.splice(index, 1);
-    syncFollowMonitor();
-    repositionAllWindows();
-  }
+  previewWindows.splice(index, 1);
+  syncFollowMonitor();
+  repositionAllWindows();
 }
 
 function cleanupDestroyedWindows(): void {
   for (let i = previewWindows.length - 1; i >= 0; i--) {
-    if (previewWindows[i].window.isDestroyed()) {
-      previewWindows.splice(i, 1);
-    }
+    const data = previewWindows[i];
+    if (!data.window.isDestroyed()) continue;
+
+    deleteMediaPathsForSender(data.webContentsId);
+    previewWindows.splice(i, 1);
   }
 }
 
@@ -266,6 +269,7 @@ export async function showCapturePreview(
 
   const previewData: PreviewWindowData = {
     window: previewWindow,
+    webContentsId,
     filePath,
     contentType,
     historyId,
@@ -321,13 +325,15 @@ function getPreviewDataByWebContentsId(
   webContentsId: number
 ): PreviewWindowData | undefined {
   return previewWindows.find(
-    data =>
-      !data.window.isDestroyed() && data.window.webContents.id === webContentsId
+    data => !data.window.isDestroyed() && data.webContentsId === webContentsId
   );
 }
 
 export function registerCapturePreviewIpc(): void {
-  registerPreviewExportIpc();
+  registerPreviewExportIpc(webContentsId => {
+    const data = getPreviewDataByWebContentsId(webContentsId);
+    return data?.contentType === 'video' ? data.filePath : null;
+  });
 
   initFollowActiveDisplay({
     getStackedCount: () => getStackedPreviews().length,
@@ -426,6 +432,7 @@ export function registerCapturePreviewIpc(): void {
 
 export function closeAllPreviewWindows(): void {
   [...previewWindows].forEach(data => {
+    deleteMediaPathsForSender(data.webContentsId);
     if (!data.window.isDestroyed()) {
       data.window.close();
     }

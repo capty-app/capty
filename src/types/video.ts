@@ -49,10 +49,32 @@ export interface RecordingStateInfo {
 
 export type VideoResolution = 'original' | '4k' | '1080p' | '720p' | '480p';
 
-export type VideoFrameRate =
-  '60' | '50' | '40' | '30' | '25' | '24' | '20' | '10';
+export const VIDEO_FRAME_RATES = [
+  '60',
+  '50',
+  '40',
+  '30',
+  '25',
+  '24',
+  '20',
+  '10',
+] as const;
+export const DEFAULT_VIDEO_FRAME_RATE = 60;
+
+export type VideoFrameRate = (typeof VIDEO_FRAME_RATES)[number];
+
+export function parseVideoFrameRate(value: unknown): number {
+  if (
+    typeof value !== 'string' ||
+    !VIDEO_FRAME_RATES.includes(value as VideoFrameRate)
+  ) {
+    return DEFAULT_VIDEO_FRAME_RATE;
+  }
+  return Number(value);
+}
 
 export type VideoFormat = 'mp4' | 'gif';
+export type VideoEditorMediaSource = 'video' | 'camera';
 
 export type VideoExportPreset = 'custom' | 'social';
 

@@ -27,6 +27,12 @@ export const TRACK_COLORS: Record<string, TrackColors> = {
     segmentSelected: 'bg-track-music',
     preview: 'border-2 border-dashed border-track-music/70 bg-track-music/30',
   },
+  equalizer: {
+    segment: 'bg-track-equalizer',
+    segmentSelected: 'bg-track-equalizer',
+    preview:
+      'border-2 border-dashed border-track-equalizer/70 bg-track-equalizer/30',
+  },
 };
 
 export const DRAW_TRACK_COLORS: TrackColors = {

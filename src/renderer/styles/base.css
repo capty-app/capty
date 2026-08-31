@@ -48,6 +48,7 @@
   --track-zoom: oklch(0.51 0.24 276);
   --track-draw: oklch(0.63 0.12 165);
   --track-music: oklch(0.55 0.22 300);
+  --track-equalizer: oklch(0.62 0.18 205);
   --trim-pin: oklch(0.76 0.14 70);
   --playhead: var(--destructive);
 }
@@ -118,6 +119,7 @@
   --color-track-zoom: var(--track-zoom);
   --color-track-draw: var(--track-draw);
   --color-track-music: var(--track-music);
+  --color-track-equalizer: var(--track-equalizer);
   --color-trim-pin: var(--trim-pin);
   --color-playhead: var(--playhead);
 }

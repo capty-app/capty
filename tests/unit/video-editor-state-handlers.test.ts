@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VideoEditorState } from '../../src/types/video-editor-state';
+import { DEFAULT_EQUALIZER_SETTINGS } from '../../src/types/equalizer';
 
 const ipcHandlers: Record<string, (...args: unknown[]) => unknown> = {};
 
@@ -196,6 +197,175 @@ describe('video editor state handlers', () => {
     const result = await saveHandler({ sender: { id: 1 } }, state);
 
     expect(result).toBe(false);
+    expect(mockFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('saves valid non-overlapping equalizer segments', async () => {
+    const state = createState({
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'equalizer-1',
+          startTime: 0,
+          endTime: 5,
+        },
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'equalizer-2',
+          startTime: 5,
+          endTime: 10,
+          mode: 'circular',
+          source: 'mic-audio',
+        },
+      ],
+    });
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(true);
+  });
+
+  it('saves canonical circular gesture geometry on widescreen video', async () => {
+    const state = createState({
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          mode: 'circular',
+          id: 'equalizer-circular',
+          startTime: 0,
+          endTime: 10,
+          x: 0.455,
+          width: 0.09,
+          height: 0.16,
+        },
+      ],
+    });
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(true);
+    expect(mockFs.writeFileSync).toHaveBeenCalled();
+  });
+
+  it('uses the configured frame rate for first-frame timeline validation', async () => {
+    const state = createState({
+      firstFrame: {
+        enabled: true,
+        imageData: 'data:image/png;base64,image',
+        fit: 'cover',
+      },
+      exportSettings: {
+        format: 'mp4',
+        resolution: '1080p',
+        qualityPreset: 'studio',
+        frameRate: '30',
+        openInFinder: false,
+      },
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'first-frame-equalizer',
+          startTime: 0,
+          endTime: 10 + 1 / 30,
+        },
+      ],
+    });
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(true);
+  });
+
+  it('falls back consistently for a malformed saved frame rate', async () => {
+    const state = createState({
+      firstFrame: {
+        enabled: true,
+        imageData: 'data:image/png;base64,image',
+        fit: 'cover',
+      },
+      exportSettings: {
+        format: 'mp4',
+        resolution: '1080p',
+        qualityPreset: 'studio',
+        frameRate: '30fps',
+        openInFinder: false,
+      },
+      equalizerSegments: [
+        {
+          ...DEFAULT_EQUALIZER_SETTINGS,
+          id: 'first-frame-equalizer',
+          startTime: 0,
+          endTime: 10 + 1 / 30,
+        },
+      ],
+    } as unknown as Partial<VideoEditorState>);
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(
+      false
+    );
+  });
+
+  it.each([
+    'invalid',
+    [
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        id: 'equalizer-1',
+        startTime: 0,
+        endTime: 6,
+      },
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        id: 'equalizer-2',
+        startTime: 5,
+        endTime: 9,
+      },
+    ],
+    [
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        id: 'equalizer-1',
+        startTime: 0,
+        endTime: 11,
+      },
+    ],
+    [
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        id: 'equalizer-1',
+        startTime: 0,
+        endTime: 5,
+        opacity: Number.NaN,
+      },
+    ],
+  ])('rejects malformed equalizer segment data', async equalizerSegments => {
+    const state = createState({
+      equalizerSegments:
+        equalizerSegments as VideoEditorState['equalizerSegments'],
+    });
+
+    const { registerStateHandlers } =
+      await import('../../src/main/capture/video/ipc/state-handlers');
+    registerStateHandlers();
+
+    const saveHandler = ipcHandlers['video-editor:saveState'];
+    await expect(saveHandler({ sender: { id: 1 } }, state)).resolves.toBe(
+      false
+    );
     expect(mockFs.writeFileSync).not.toHaveBeenCalled();
   });
 });

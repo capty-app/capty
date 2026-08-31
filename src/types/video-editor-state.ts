@@ -16,6 +16,7 @@ import type {
 } from './video';
 import type { FirstFrameSettings } from './first-frame';
 import type { MusicTrack } from './music';
+import type { EqualizerSegment, LegacyEqualizerSettings } from './equalizer';
 
 export interface ExportSettings {
   format: VideoFormat;
@@ -53,6 +54,10 @@ export interface VideoEditorState {
   firstFrame?: FirstFrameSettings;
 
   musicTracks?: MusicTrack[];
+
+  equalizerSegments?: EqualizerSegment[];
+
+  equalizer?: LegacyEqualizerSettings;
 
   exportSettings?: ExportSettings;
 

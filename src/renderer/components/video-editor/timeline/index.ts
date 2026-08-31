@@ -8,6 +8,7 @@ export { default as Track } from './track';
 export { default as ZoomTrack } from './zoom-track';
 export { default as DrawingTrack } from './drawing-track';
 export { default as MusicTrack } from './music-track';
+export { default as EqualizerTrack } from './equalizer-track';
 export { default as TrackRow, TRACK_HEIGHT } from './track-row';
 export { default as Playhead } from './playhead';
 export { default as SpeedSelector } from './speed-selector';

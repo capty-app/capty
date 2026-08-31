@@ -7,8 +7,13 @@ import {
 } from '@/renderer/components/video-editor/timeline/track-colors';
 
 describe('TRACK_COLORS', () => {
-  it('defines the three track types', () => {
-    expect(Object.keys(TRACK_COLORS)).toEqual(['video', 'zoom', 'music']);
+  it('defines the four track types', () => {
+    expect(Object.keys(TRACK_COLORS)).toEqual([
+      'video',
+      'zoom',
+      'music',
+      'equalizer',
+    ]);
   });
 
   it('gives every track type non-empty class strings', () => {
@@ -24,6 +29,7 @@ describe('TRACK_COLORS', () => {
     expect(TRACK_COLORS.video.cutLine).toBeTruthy();
     expect(TRACK_COLORS.zoom.cutBadge).toBeUndefined();
     expect(TRACK_COLORS.music.cutBadge).toBeUndefined();
+    expect(TRACK_COLORS.equalizer.cutBadge).toBeUndefined();
   });
 
   it('fills each track with its own solid hue token', () => {

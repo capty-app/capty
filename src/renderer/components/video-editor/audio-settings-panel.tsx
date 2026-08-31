@@ -11,10 +11,12 @@ import {
   SelectValue,
 } from '@/renderer/components/ui/select';
 import { SettingsPanelHeader } from './components';
+import EqualizerSettingsSection from './equalizer-settings-section';
 import { useStyleUpdater } from './hooks/use-style-updater';
 import type { AudioStyle, KeyboardSoundType } from '@/types/audio';
 import { KEYBOARD_SOUND_OPTIONS } from '@/types/audio';
 import type { MusicTrack } from '@/types/music';
+import type { EqualizerSettings } from '@/types/equalizer';
 import { SOURCE_ICONS } from '@/types/music';
 import {
   PLAYBACK_SPEED_PRESETS,
@@ -29,6 +31,10 @@ interface AudioSettingsPanelProps {
   onStopDemo: () => void;
   isDemoPlaying: boolean;
   musicTracks: MusicTrack[];
+  equalizer: EqualizerSettings | null;
+  isEqualizerLoading: boolean;
+  hasEqualizerError: boolean;
+  onEqualizerChange: (settings: EqualizerSettings) => void;
   onAddMusicTrack: () => void;
   onRemoveMusicTrack: (id: string) => void;
   onUpdateMusicTrack: (id: string, updates: Partial<MusicTrack>) => void;
@@ -42,6 +48,10 @@ export default function AudioSettingsPanel({
   onStopDemo,
   isDemoPlaying,
   musicTracks,
+  equalizer,
+  isEqualizerLoading,
+  hasEqualizerError,
+  onEqualizerChange,
   onAddMusicTrack,
   onRemoveMusicTrack,
   onUpdateMusicTrack,
@@ -147,8 +157,16 @@ export default function AudioSettingsPanel({
         );
       })}
 
+      <EqualizerSettingsSection
+        settings={equalizer}
+        tracks={musicTracks}
+        isLoading={isEqualizerLoading}
+        hasError={hasEqualizerError}
+        onChange={onEqualizerChange}
+      />
+
       {hasKeyboardData && (
-        <div className="space-y-3">
+        <div className="space-y-3 border-t pt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Keyboard className="text-muted-foreground size-4" />

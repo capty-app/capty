@@ -1,48 +1,109 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockFetch = vi.fn();
 const mockInvoke = vi.fn();
+const mockSend = vi.fn();
+const mockOn = vi.fn();
+const mockOff = vi.fn();
+const responseListeners = new Map<
+  string,
+  (event: unknown, response: unknown) => void
+>();
 
-vi.stubGlobal('fetch', mockFetch);
 vi.stubGlobal('window', {
   ipcRenderer: {
     invoke: mockInvoke,
+    send: mockSend,
+    on: mockOn,
+    off: mockOff,
   },
 });
 
 describe('file-utils', () => {
   beforeEach(() => {
     vi.resetModules();
-    mockFetch.mockReset();
     mockInvoke.mockReset();
+    mockSend.mockReset();
+    mockOn.mockReset();
+    mockOff.mockReset();
+    responseListeners.clear();
+    mockOn.mockImplementation(
+      (
+        channel: string,
+        listener: (event: unknown, response: unknown) => void
+      ) => {
+        responseListeners.set(channel, listener);
+      }
+    );
+    mockOff.mockImplementation((channel: string) => {
+      responseListeners.delete(channel);
+    });
   });
 
-  describe('loadFileAsBlob', () => {
-    it('should fetch file with file:// protocol', async () => {
-      const mockBlob = new Blob(['test content'], { type: 'video/mp4' });
-      mockFetch.mockResolvedValue({
-        blob: () => Promise.resolve(mockBlob),
-      });
+  describe('createFileSource', () => {
+    it('reads media through IPC without file URL fetches', async () => {
+      mockSend.mockImplementation(
+        (
+          channel: string,
+          payload: { requestId: string; start?: number; end?: number }
+        ) => {
+          const responseChannel = `${channel}:response`;
+          const result =
+            channel === 'video-editor:media:get-size'
+              ? { success: true, size: 6 }
+              : {
+                  success: true,
+                  bytes: new Uint8Array(
+                    (payload.end ?? 0) - (payload.start ?? 0)
+                  ).fill(7),
+                };
+          responseListeners.get(responseChannel)?.(
+            {},
+            {
+              requestId: payload.requestId,
+              result,
+            }
+          );
+        }
+      );
 
-      const { loadFileAsBlob } =
+      const { createFileSource } =
         await import('@/renderer/components/video-editor/export/file-utils');
-      const result = await loadFileAsBlob('/path/to/video.mp4');
+      const source = createFileSource('video');
 
-      expect(mockFetch).toHaveBeenCalledWith('file:///path/to/video.mp4');
-      expect(result).toBe(mockBlob);
+      expect(await source.getSize()).toBe(6);
+      const result = await source._read(1, 3, 0, 6);
+
+      expect(result?.bytes).toEqual(new Uint8Array(6).fill(7));
+      expect(mockSend).toHaveBeenCalledWith(
+        'video-editor:media:get-size',
+        expect.objectContaining({ source: 'video' })
+      );
+      expect(mockSend).toHaveBeenCalledWith(
+        'video-editor:media:read-range',
+        expect.objectContaining({ source: 'video', start: 0, end: 6 })
+      );
+      source._dispose();
     });
 
-    it('should handle paths with spaces', async () => {
-      const mockBlob = new Blob(['test'], { type: 'video/mp4' });
-      mockFetch.mockResolvedValue({
-        blob: () => Promise.resolve(mockBlob),
-      });
+    it('surfaces media read failures', async () => {
+      mockSend.mockImplementation(
+        (channel: string, payload: { requestId: string }) => {
+          responseListeners.get(`${channel}:response`)?.(
+            {},
+            {
+              requestId: payload.requestId,
+              result: { success: false, error: 'File missing' },
+            }
+          );
+        }
+      );
 
-      const { loadFileAsBlob } =
+      const { createFileSource } =
         await import('@/renderer/components/video-editor/export/file-utils');
-      await loadFileAsBlob('/path/to/my video.mp4');
+      const source = createFileSource('video');
 
-      expect(mockFetch).toHaveBeenCalledWith('file:///path/to/my video.mp4');
+      await expect(source.getSize()).rejects.toThrow('File missing');
+      source._dispose();
     });
   });
 

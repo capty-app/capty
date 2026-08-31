@@ -11,10 +11,13 @@ import {
   isRecordingProject,
 } from '@/main/capture/video/recording-project';
 import { loadCursorData } from '@/main/capture/video/cursor-data';
+import { loadCameraData } from '@/main/capture/video/camera-data';
 import {
-  loadCameraData,
-  getAbsoluteCameraVideoPath,
-} from '@/main/capture/video/camera-data';
+  deleteMediaPathsForSender,
+  resolveVideoMediaPaths,
+  setMediaPathsForSender,
+  type VideoMediaPaths,
+} from '@/main/capture/video/media-sources';
 import type { VideoMetadata } from '@/types/video';
 import type { CursorData, CursorStyle } from '@/types/cursor';
 import type { CameraStyle } from '@/types/camera';
@@ -52,22 +55,34 @@ function loadEditorState(filePath: string): Partial<VideoEditorState> | null {
   }
 }
 
-export function registerPreviewExportIpc(): void {
+export function registerPreviewExportIpc(
+  getPreviewVideoPath: (webContentsId: number) => string | null
+): void {
   ipcMain.handle(
     'capture-preview:load-export-data',
-    async (_, filePath: string): Promise<PreviewExportData | null> => {
-      const videoPath = isRecordingProject(filePath)
+    async (event): Promise<PreviewExportData | null> => {
+      const senderId = event.sender.id;
+      deleteMediaPathsForSender(senderId);
+
+      const filePath = getPreviewVideoPath(senderId);
+      if (!filePath) return null;
+
+      const requestedVideoPath = isRecordingProject(filePath)
         ? getRecordingVideoPath(filePath)
         : filePath;
 
-      const probeResult = await probeVideo(videoPath);
+      let mediaPaths: VideoMediaPaths;
+      try {
+        mediaPaths = resolveVideoMediaPaths(requestedVideoPath);
+      } catch {
+        return null;
+      }
+
+      const probeResult = await probeVideo(mediaPaths.video);
       if (!probeResult) return null;
 
       const cursorData = await loadCursorData(filePath);
       const cameraData = await loadCameraData(filePath);
-      const cameraVideoPath = cameraData
-        ? getAbsoluteCameraVideoPath(filePath, cameraData)
-        : null;
 
       const systemAudioFilePath = getSystemAudioPath(filePath);
       const micAudioFilePath = getMicAudioPath(filePath);
@@ -78,9 +93,10 @@ export function registerPreviewExportIpc(): void {
         !systemAudioExists && !micAudioExists && probeResult.hasAudio;
 
       const editorState = loadEditorState(filePath);
+      setMediaPathsForSender(senderId, mediaPaths);
 
       return {
-        videoPath,
+        videoPath: mediaPaths.video,
         videoMetadata: probeResult.metadata,
         segments: editorState?.segments ?? null,
         zoomSegments: editorState?.zoomSegments ?? null,
@@ -88,10 +104,7 @@ export function registerPreviewExportIpc(): void {
         drawingSegments: editorState?.drawingSegments ?? null,
         cursorData,
         cursorStyle: (editorState?.cursorStyle as CursorStyle) ?? null,
-        cameraVideoPath:
-          cameraVideoPath && existsSync(cameraVideoPath)
-            ? cameraVideoPath
-            : null,
+        cameraVideoPath: cameraData ? mediaPaths.camera : null,
         cameraStyle: (editorState?.cameraStyle as CameraStyle) ?? null,
         systemAudioPath: systemAudioExists ? systemAudioFilePath : null,
         micAudioPath: micAudioExists ? micAudioFilePath : null,

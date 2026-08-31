@@ -137,6 +137,22 @@ describe('ffmpeg gif export', () => {
     expect(result.success).toBe(true);
   });
 
+  it('uses the shared fallback for a malformed frame rate', async () => {
+    const { convertMp4ToGif } = await import('@/main/utils/ffmpeg');
+
+    await convertMp4ToGif({
+      inputPath: '/p/in.mp4',
+      outputPath: '/p/out.gif',
+      resolution: '720p',
+      frameRate: '30fps' as never,
+    });
+
+    const args = mockSpawn.mock.calls[0][1] as string[];
+    expect(args.find(arg => arg.startsWith('[0:v]fps='))).toContain(
+      '[0:v]fps=60,'
+    );
+  });
+
   it('returns error when output not created after ffmpeg', async () => {
     let calls = 0;
     mockExistsSync.mockImplementation(() => {

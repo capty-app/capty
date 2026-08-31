@@ -6,6 +6,7 @@ import type { useSegmentOperations } from '../hooks/use-segment-operations';
 import type { useZoomSegments } from '../hooks/use-zoom-segments';
 import type { useDrawingSegments } from '../hooks/use-drawing-segments';
 import type { useMusicTracks } from '../hooks/use-music-tracks';
+import type { useEqualizerSegments } from '../hooks/use-equalizer-segments';
 import { useResizableHeight } from '../hooks/use-resizable-height';
 import type { UseTimelineZoomReturn } from './use-timeline-zoom';
 import { TimelineProvider } from './timeline-context';
@@ -16,6 +17,7 @@ import TimelineTrack from './timeline-track';
 import ZoomTrack from './zoom-track';
 import DrawingTrack from './drawing-track';
 import MusicTrack from './music-track';
+import EqualizerTrack from './equalizer-track';
 import TimelineResizeGrip from './timeline-resize-grip';
 import TrackRow, { TRACK_HEIGHT, VIDEO_TRACK_HEIGHT } from './track-row';
 
@@ -46,6 +48,7 @@ interface TimelinePanelProps {
   zoomControl: ReturnType<typeof useZoomSegments>;
   drawingControl: ReturnType<typeof useDrawingSegments>;
   musicControl: ReturnType<typeof useMusicTracks>;
+  equalizerControl: ReturnType<typeof useEqualizerSegments>;
   displayTimelineDuration: number;
   originalDuration: number;
   systemAudioPath?: string | null;
@@ -55,6 +58,7 @@ interface TimelinePanelProps {
   onZoomSelect: (id: string | null) => void;
   onDrawingSelect: (id: string | null) => void;
   onMusicSelect: (id: string | null) => void;
+  onEqualizerSelect: (id: string | null) => void;
   onPreviewSeek: (tlPos: number | null) => void;
   onFitToView: () => void;
   scrubAudioEnabled: boolean;
@@ -75,6 +79,7 @@ export default function TimelinePanel({
   zoomControl,
   drawingControl,
   musicControl,
+  equalizerControl,
   displayTimelineDuration,
   originalDuration,
   systemAudioPath,
@@ -84,6 +89,7 @@ export default function TimelinePanel({
   onZoomSelect,
   onDrawingSelect,
   onMusicSelect,
+  onEqualizerSelect,
   onPreviewSeek,
   onFitToView,
   scrubAudioEnabled,
@@ -145,6 +151,31 @@ export default function TimelinePanel({
           onDelete={zoomControl.handleDeleteZoom}
           onApplyToAll={zoomControl.handleApplyZoomToAll}
           onDeleteOthers={zoomControl.handleDeleteOtherZooms}
+        />
+      ),
+    };
+
+    const equalizerRow: TimelineRow = {
+      key: 'equalizer',
+      node: (
+        <EqualizerTrack
+          key="equalizer"
+          segments={equalizerControl.equalizerSegments}
+          totalDuration={playback.totalTimelineDuration}
+          selectedId={equalizerControl.selectedEqualizerId}
+          onSelect={onEqualizerSelect}
+          onResize={equalizerControl.handleUpdateEqualizerTime}
+          onMove={equalizerControl.handleUpdateEqualizerTime}
+          onGestureEnd={equalizerControl.handleCommitEqualizerGesture}
+          onAdd={(startTime, endTime) => {
+            const id = equalizerControl.handleAddEqualizer(startTime, endTime);
+            if (id) onEqualizerSelect(id);
+          }}
+          onDuplicate={sourceId => {
+            const id = equalizerControl.handleDuplicateEqualizer(sourceId);
+            if (id) onEqualizerSelect(id);
+          }}
+          onDelete={equalizerControl.handleDeleteEqualizer}
         />
       ),
     };
@@ -217,11 +248,12 @@ export default function TimelinePanel({
         ),
       }));
 
-    return [videoRow, zoomRow, ...drawingRows, ...musicRows];
+    return [videoRow, zoomRow, equalizerRow, ...drawingRows, ...musicRows];
   }, [
     segments,
     segmentOps,
     zoomControl,
+    equalizerControl,
     drawingControl,
     musicControl,
     playback.totalTimelineDuration,
@@ -230,6 +262,7 @@ export default function TimelinePanel({
     onZoomSelect,
     onDrawingSelect,
     onMusicSelect,
+    onEqualizerSelect,
     videoWaveformSrc,
     originalDuration,
     systemAudioPath,

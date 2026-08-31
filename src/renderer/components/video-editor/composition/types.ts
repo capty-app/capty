@@ -8,6 +8,7 @@ import type { SubtitleData, SubtitleStyle } from '@/types/subtitle';
 import type { VideoWallpaperSettings } from '@/types/video-wallpaper';
 import type { FirstFrameSettings } from '@/types/first-frame';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EqualizerSegment, EqualizerTrackData } from '@/types/equalizer';
 
 export interface CompositionConfig {
   videoWidth: number;
@@ -27,6 +28,8 @@ export interface CompositionConfig {
   subtitleStyle?: SubtitleStyle | null;
   deviceFrame?: boolean;
   firstFrame?: FirstFrameSettings | null;
+  equalizerSegments?: EqualizerSegment[] | null;
+  equalizerTracks?: EqualizerTrackData[] | null;
   fps?: number;
 }
 

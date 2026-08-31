@@ -1,7 +1,6 @@
 import {
   Input,
   Output,
-  BlobSource,
   Mp4OutputFormat,
   BufferTarget,
   CanvasSource,
@@ -16,7 +15,7 @@ import { getTotalTimelineDuration, timelineToVideo } from '../utils';
 import { calculateBitrate } from './bitrate';
 import { calculateExportDimensions } from './export-dimensions';
 import { muxAudioWithVideo } from './audio-muxer';
-import { loadFileAsBlob, loadImage, writeBuffer } from './file-utils';
+import { createFileSource, loadImage, writeBuffer } from './file-utils';
 import type { ExportOptions, ExportResult, AudioTrack } from './export-types';
 import type { MusicTrack } from '@/types/music';
 import { PREFETCH_BATCH_SIZE } from './export-types';
@@ -64,7 +63,7 @@ export class WebCodecsExporter {
 
     try {
       const { sourceVideoTrack, sourceInputInstance } =
-        await this.initializeSourceInput(sourceVideoPath);
+        await this.initializeSourceInput();
       sourceInput = sourceInputInstance;
 
       const isCameraVisible = config.cameraStyle?.visible ?? true;
@@ -170,13 +169,12 @@ export class WebCodecsExporter {
     this.isAborted = true;
   }
 
-  private async initializeSourceInput(sourceVideoPath: string): Promise<{
+  private async initializeSourceInput(): Promise<{
     sourceVideoTrack: InputVideoTrack;
     sourceInputInstance: Input;
   }> {
-    const sourceBlob = await loadFileAsBlob(sourceVideoPath);
     const sourceInput = new Input({
-      source: new BlobSource(sourceBlob),
+      source: createFileSource('video'),
       formats: ALL_FORMATS,
     });
 
@@ -216,9 +214,8 @@ export class WebCodecsExporter {
       return { cameraInputInstance: null, cameraVideoTrack: null };
     }
 
-    const cameraBlob = await loadFileAsBlob(cameraVideoPath);
     const cameraInput = new Input({
-      source: new BlobSource(cameraBlob),
+      source: createFileSource('camera'),
       formats: ALL_FORMATS,
     });
     const cameraVideoTrack = await cameraInput.getPrimaryVideoTrack();

@@ -23,12 +23,16 @@ import {
   calculateDeviceFrameLayout,
 } from './device-frame-canvas-renderer';
 import { renderDrawings } from './drawing-canvas-renderer';
+import { renderEqualizer } from './equalizer-canvas-renderer';
+import { sampleEqualizerFrame } from './equalizer-frame';
 import { convertSegmentsToVideoSegments } from './types';
 import { DEFAULT_CURSOR_STYLE } from '@/types/cursor';
 import { DEFAULT_CAMERA_STYLE } from '@/types/camera';
 import { DEFAULT_KEYBOARD_STYLE } from '@/types/keyboard';
 import { DEFAULT_SUBTITLE_STYLE } from '@/types/subtitle';
 import { calculateWallpaperDimensions } from '@/types/video-wallpaper';
+import type { EqualizerFrameData } from '@/types/equalizer';
+import { getActiveEqualizerSegment } from '@/types/equalizer';
 
 export interface RenderOptions {
   fps?: number;
@@ -40,6 +44,7 @@ export class VideoCompositionEngine {
   private firstFrameImage: HTMLImageElement | ImageBitmap | null = null;
   private shadowOffscreen: OffscreenCanvas | null = null;
   private shadowOffscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
+  private equalizerFrame: EqualizerFrameData | undefined;
 
   constructor(config: CompositionConfig) {
     this.config = config;
@@ -98,6 +103,7 @@ export class VideoCompositionEngine {
     this.firstFrameImage = null;
     this.shadowOffscreen = null;
     this.shadowOffscreenCtx = null;
+    this.equalizerFrame = undefined;
     clearOptimalCenterCache();
   }
 
@@ -217,7 +223,41 @@ export class VideoCompositionEngine {
 
     this.renderKeyboardOverlay(ctx, adjustedTime, subtitleBounds);
 
+    this.renderEqualizerOverlay(ctx, timelineTime, adjustedTime);
+
     this.renderDrawingOverlay(ctx, timelineTime);
+  }
+
+  private renderEqualizerOverlay(
+    ctx: Context2D,
+    timelineTime: number,
+    audioTimelineTime: number
+  ): void {
+    const { equalizerSegments, equalizerTracks } = this.config;
+    if (!equalizerSegments?.length || !equalizerTracks?.length) return;
+
+    const equalizer = getActiveEqualizerSegment(
+      equalizerSegments,
+      timelineTime
+    );
+    if (!equalizer) return;
+
+    const frame = sampleEqualizerFrame(
+      equalizer,
+      equalizerTracks,
+      audioTimelineTime,
+      this.equalizerFrame
+    );
+    if (!frame) return;
+
+    this.equalizerFrame = frame;
+    const { width, height } = this.getCompositionDimensions();
+    renderEqualizer(ctx, {
+      settings: equalizer,
+      frame,
+      videoWidth: width,
+      videoHeight: height,
+    });
   }
 
   private renderDrawingOverlay(ctx: Context2D, timelineTime: number): void {

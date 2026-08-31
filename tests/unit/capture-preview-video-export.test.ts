@@ -28,7 +28,9 @@ const mockGetEditorStatePath = vi.fn();
 const mockIsRecordingProject = vi.fn();
 const mockLoadCursorData = vi.fn();
 const mockLoadCameraData = vi.fn();
-const mockGetAbsoluteCameraVideoPath = vi.fn();
+const mockResolveVideoMediaPaths = vi.fn();
+const mockSetMediaPathsForSender = vi.fn();
+const mockDeleteMediaPathsForSender = vi.fn();
 
 vi.mock('electron', () => ({
   ipcMain: mockIpcMain,
@@ -60,7 +62,15 @@ vi.mock('../../src/main/capture/video/cursor-data', () => ({
 
 vi.mock('../../src/main/capture/video/camera-data', () => ({
   loadCameraData: mockLoadCameraData,
-  getAbsoluteCameraVideoPath: mockGetAbsoluteCameraVideoPath,
+}));
+
+vi.mock('../../src/main/capture/video/media-sources', () => ({
+  resolveVideoMediaPaths: (...args: unknown[]) =>
+    mockResolveVideoMediaPaths(...args),
+  setMediaPathsForSender: (...args: unknown[]) =>
+    mockSetMediaPathsForSender(...args),
+  deleteMediaPathsForSender: (...args: unknown[]) =>
+    mockDeleteMediaPathsForSender(...args),
 }));
 
 describe('capture preview video export', () => {
@@ -84,7 +94,14 @@ describe('capture preview video export', () => {
     });
     mockLoadCursorData.mockResolvedValue(null);
     mockLoadCameraData.mockResolvedValue(null);
-    mockGetAbsoluteCameraVideoPath.mockReturnValue(null);
+    mockResolveVideoMediaPaths.mockReturnValue({
+      video: '/project/video.cap/content.mp4',
+      camera: null,
+      identities: {
+        video: { device: 1, inode: 2 },
+        camera: null,
+      },
+    });
   });
 
   it('includes timeline and zoom state in preview export payload', async () => {
@@ -139,10 +156,10 @@ describe('capture preview video export', () => {
     const { registerPreviewExportIpc } =
       await import('../../src/main/capture/capture-preview/video-export');
 
-    registerPreviewExportIpc();
+    registerPreviewExportIpc(() => '/project/video.cap');
 
     const handler = ipcHandlers['capture-preview:load-export-data'];
-    const result = (await handler({}, '/project/video.cap')) as {
+    const result = (await handler({ sender: { id: 7 } })) as {
       segments: typeof segments;
       zoomSegments: typeof zoomSegments;
       zoomSettings: typeof zoomSettings;
@@ -151,6 +168,32 @@ describe('capture preview video export', () => {
     expect(result.segments).toEqual(segments);
     expect(result.zoomSegments).toEqual(zoomSegments);
     expect(result.zoomSettings).toEqual(zoomSettings);
+    expect(mockResolveVideoMediaPaths).toHaveBeenCalledWith(
+      '/project/video.cap/content.mp4'
+    );
+    expect(mockSetMediaPathsForSender).toHaveBeenCalledWith(7, {
+      video: '/project/video.cap/content.mp4',
+      camera: null,
+      identities: {
+        video: { device: 1, inode: 2 },
+        camera: null,
+      },
+    });
+  });
+
+  it('rejects export data requests from unregistered preview senders', async () => {
+    const { registerPreviewExportIpc } =
+      await import('../../src/main/capture/capture-preview/video-export');
+
+    registerPreviewExportIpc(() => null);
+
+    const handler = ipcHandlers['capture-preview:load-export-data'];
+    const result = await handler({ sender: { id: 99 } });
+
+    expect(result).toBeNull();
+    expect(mockDeleteMediaPathsForSender).toHaveBeenCalledWith(99);
+    expect(mockResolveVideoMediaPaths).not.toHaveBeenCalled();
+    expect(mockProbeVideo).not.toHaveBeenCalled();
   });
 
   it('returns null timeline fields when no editor state exists', async () => {
@@ -164,10 +207,10 @@ describe('capture preview video export', () => {
     const { registerPreviewExportIpc } =
       await import('../../src/main/capture/capture-preview/video-export');
 
-    registerPreviewExportIpc();
+    registerPreviewExportIpc(() => '/project/video.cap');
 
     const handler = ipcHandlers['capture-preview:load-export-data'];
-    const result = (await handler({}, '/project/video.cap')) as {
+    const result = (await handler({ sender: { id: 7 } })) as {
       segments: unknown;
       zoomSegments: unknown;
       zoomSettings: unknown;

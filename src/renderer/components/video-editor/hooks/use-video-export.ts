@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import type { VideoExportOptions, VideoMetadata } from '@/types/video';
+import type {
+  VideoExportOptions,
+  VideoFrameRate,
+  VideoMetadata,
+} from '@/types/video';
+import { parseVideoFrameRate } from '@/types/video';
 import type { ExportSettings } from '@/types/video-editor-state';
 import type { CloudUploadState } from '@/types/cloud';
 import type { Segment } from '../types';
@@ -13,6 +18,7 @@ import type { MusicTrack } from '@/types/music';
 import type { VideoWallpaperSettings as VideoWallpaper } from '@/types/video-wallpaper';
 import type { FirstFrameSettings } from '@/types/first-frame';
 import type { DrawingSegment } from '@/types/drawing';
+import type { EqualizerSegment, EqualizerTrackData } from '@/types/equalizer';
 import { clampExportOptionsToFree } from '@/types/entitlements';
 import { WebCodecsExporter } from '../export';
 import { videoToTimeline, getTotalTimelineDuration } from '../utils';
@@ -49,6 +55,10 @@ interface ExportConfig {
   subtitleStyle: SubtitleStyle;
   firstFrame: FirstFrameSettings;
   musicTracks: MusicTrack[];
+  equalizerSegments: EqualizerSegment[];
+  getEqualizerTrackData: (
+    signal?: AbortSignal
+  ) => Promise<EqualizerTrackData[]>;
   uploadToCloud: boolean;
 }
 
@@ -82,6 +92,7 @@ export function useVideoExport(): UseVideoExportReturn {
     useState<CloudUploadState>('idle');
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const exporterRef = useRef<WebCodecsExporter | null>(null);
+  const analysisAbortControllerRef = useRef<AbortController | null>(null);
 
   const copyUploadedUrl = useCallback(() => {
     if (!uploadedUrl) return;
@@ -118,7 +129,8 @@ export function useVideoExport(): UseVideoExportReturn {
           ? rawOutputPath
           : `${rawOutputPath.replace(/\.[^/.]+$/, '')}.gif`
         : rawOutputPath;
-      const frameRate = parseInt(options.frameRate, 10);
+      const frameRate = parseVideoFrameRate(options.frameRate);
+      const normalizedFrameRate = String(frameRate) as VideoFrameRate;
 
       setIsExporting(true);
       setExportProgress(0);
@@ -127,7 +139,9 @@ export function useVideoExport(): UseVideoExportReturn {
       setUploadedUrl(null);
 
       const exporter = new WebCodecsExporter();
+      const analysisAbortController = new AbortController();
       exporterRef.current = exporter;
+      analysisAbortControllerRef.current = analysisAbortController;
 
       const exportStartTime = Date.now();
       let keyboardSoundTempPath: string | null = null;
@@ -179,6 +193,13 @@ export function useVideoExport(): UseVideoExportReturn {
           }
         }
 
+        const equalizerTracks =
+          config.equalizerSegments.length > 0
+            ? await config.getEqualizerTrackData(analysisAbortController.signal)
+            : [];
+
+        if (exporterRef.current !== exporter) return;
+
         const result = await exporter.export({
           sourceVideoPath: config.filePath,
           systemAudioPath: config.systemAudioPath,
@@ -209,12 +230,14 @@ export function useVideoExport(): UseVideoExportReturn {
             subtitleData: config.subtitleData,
             subtitleStyle: config.subtitleStyle,
             firstFrame: config.firstFrame,
+            equalizerSegments: config.equalizerSegments,
+            equalizerTracks,
             fps: frameRate,
           },
           frameRate,
           qualityPreset: options.qualityPreset,
           resolution: options.resolution,
-          exportOptions: options,
+          exportOptions: { ...options, frameRate: normalizedFrameRate },
           onProgress: progress => {
             const adjustedProgress = isGif
               ? Math.round(progress * 0.7)
@@ -247,7 +270,7 @@ export function useVideoExport(): UseVideoExportReturn {
               inputPath: mp4OutputPath,
               outputPath: finalOutputPath,
               resolution: options.resolution,
-              frameRate: options.frameRate,
+              frameRate: normalizedFrameRate,
             }
           )) as { success: boolean; error?: string };
 
@@ -313,6 +336,13 @@ export function useVideoExport(): UseVideoExportReturn {
           }
         }
       } catch (error) {
+        if (
+          analysisAbortController.signal.aborted ||
+          exporterRef.current !== exporter
+        ) {
+          return;
+        }
+
         console.error('Export error:', error);
         const message =
           error instanceof Error
@@ -334,12 +364,17 @@ export function useVideoExport(): UseVideoExportReturn {
         }
         setIsExporting(false);
         exporterRef.current = null;
+        if (analysisAbortControllerRef.current === analysisAbortController) {
+          analysisAbortControllerRef.current = null;
+        }
       }
     },
     [isExporting, exportSettings.openInFinder, toast]
   );
 
   const handleCancelExport = useCallback(() => {
+    analysisAbortControllerRef.current?.abort();
+    analysisAbortControllerRef.current = null;
     if (exporterRef.current) {
       exporterRef.current.cancel();
       exporterRef.current = null;

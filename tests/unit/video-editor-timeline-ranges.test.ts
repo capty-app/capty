@@ -4,6 +4,8 @@ import {
   adjustTimelineRangeSlices,
 } from '../../src/renderer/components/video-editor/utils';
 import type { DrawingSegment } from '../../src/types/drawing';
+import type { EqualizerSegment } from '../../src/types/equalizer';
+import { DEFAULT_EQUALIZER_SETTINGS } from '../../src/types/equalizer';
 import type { ZoomSegment } from '../../src/types/zoom';
 import type { Segment } from '../../src/renderer/components/video-editor/types';
 
@@ -69,7 +71,7 @@ describe('adjustTimelineRanges', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns adjusted segments, zooms, and drawings as one timeline slice update', () => {
+  it('adjusts video, zoom, drawing, and equalizer timeline slices together', () => {
     const nextSegments: Segment[] = [
       {
         id: 'video',
@@ -98,11 +100,21 @@ describe('adjustTimelineRanges', () => {
         annotations: [],
       },
     ];
+    const equalizerSegments: EqualizerSegment[] = [
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        enabled: true,
+        id: 'equalizer',
+        startTime: 3,
+        endTime: 5,
+      },
+    ];
 
     const result = adjustTimelineRangeSlices({
       nextSegments,
       zoomSegments,
       drawingSegments,
+      equalizerSegments,
       adjustment: baseAdjustment,
       drawingMinDuration: 0.3,
     });
@@ -119,6 +131,15 @@ describe('adjustTimelineRanges', () => {
         canvasWidth: 100,
         canvasHeight: 100,
         annotations: [],
+      },
+    ]);
+    expect(result.equalizerSegments).toEqual([
+      {
+        ...DEFAULT_EQUALIZER_SETTINGS,
+        enabled: true,
+        id: 'equalizer',
+        startTime: 2.5,
+        endTime: 3.5,
       },
     ]);
   });
