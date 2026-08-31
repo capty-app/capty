@@ -136,9 +136,18 @@ export async function startRecordingWithConfig(
         )
       : Promise.resolve();
 
-  const [response] = await Promise.all([startPromise, overlayPromise]);
+  let response: RecorderResponse;
+
+  try {
+    [response] = await Promise.all([startPromise, overlayPromise]);
+  } catch (error) {
+    await overlayPromise;
+    await hideRecordingOverlay();
+    throw error;
+  }
 
   if (!response.success) {
+    await hideRecordingOverlay();
     throw new Error(response.message || 'Failed to start recording');
   }
 
@@ -199,7 +208,18 @@ export async function stopRecording(
   }
 
   const outputPath = currentRecordingPath;
-  await hideControl();
+
+  try {
+    await hideControl();
+  } catch (error) {
+    console.error('Failed to hide control during cleanup:', error);
+  }
+
+  try {
+    await hideRecordingOverlay();
+  } catch (error) {
+    console.error('Failed to hide recording overlay during cleanup:', error);
+  }
 
   let response: RecorderResponse | null = null;
   let stopError: Error | null = null;
@@ -218,7 +238,6 @@ export async function stopRecording(
     stopError = error instanceof Error ? error : new Error(String(error));
   }
 
-  await hideRecordingOverlay();
   hideRecordingTray();
 
   currentRecordingPath = null;

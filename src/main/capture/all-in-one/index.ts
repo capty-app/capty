@@ -187,10 +187,7 @@ async function handleScreenshotAction(): Promise<void> {
   }
 
   unregisterAllInOneShortcuts();
-  cancelAreaSelection();
-  hideAllInOneControl();
-
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await Promise.all([cancelAreaSelection(), hideAllInOneControl()]);
 
   try {
     await captureArea({
@@ -311,6 +308,7 @@ export default async function startAllInOne(): Promise<void> {
 
   const handleCancelled = () => {
     unregisterAllInOneShortcuts();
+    void hideAllInOneControl();
   };
 
   const persistedArea = getPersistedArea();

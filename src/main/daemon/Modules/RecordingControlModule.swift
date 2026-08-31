@@ -319,7 +319,7 @@ class RecordingControlModule: Module {
         config.escapeToClose = currentMode == .preRecording
         config.onEscape = { [weak self] in
             if self?.currentMode == .preRecording {
-                self?.emitEvent("cancel")
+                self?.emitTerminalEvent("cancel")
             }
         }
         
@@ -405,10 +405,10 @@ class RecordingControlModule: Module {
             onToggleMic: { [weak self] in self?.emitEvent("toggle-mic") },
             onToggleCamera: { [weak self] in self?.emitEvent("toggle-camera") },
             onStart: { [weak self] in self?.emitEvent("start") },
-            onCancel: { [weak self] in self?.emitEvent("cancel") },
+            onCancel: { [weak self] in self?.emitTerminalEvent("cancel") },
             onPause: { [weak self] in self?.emitEvent("pause") },
             onResume: { [weak self] in self?.emitEvent("resume") },
-            onStop: { [weak self] in self?.emitEvent("stop") },
+            onStop: { [weak self] in self?.emitTerminalEvent("stop") },
             onRestart: { [weak self] in self?.handleRestartWithConfirmation() },
             onDelete: { [weak self] in self?.handleDeleteWithConfirmation() },
             onSelectMic: { [weak self] deviceId, deviceName in
@@ -425,7 +425,7 @@ class RecordingControlModule: Module {
                     "name": ratio.name
                 ])
             },
-            onOpenIOSHelp: { [weak self] in self?.emitEvent("open-ios-help") },
+            onOpenIOSHelp: { [weak self] in self?.emitTerminalEvent("open-ios-help") },
             onSelectIOSDevice: { [weak self] deviceId, deviceName in
                 self?.emit(event: "select-ios-device", data: ["deviceId": deviceId as Any, "deviceName": deviceName as Any])
             },
@@ -444,7 +444,7 @@ class RecordingControlModule: Module {
             message: "Are you sure you want to restart? Current recording will be discarded.",
             confirmButton: "Restart",
             onConfirm: { [weak self] in
-                self?.emitEvent("restart")
+                self?.emitTerminalEvent("restart")
             }
         )
     }
@@ -455,7 +455,7 @@ class RecordingControlModule: Module {
             message: "Are you sure you want to delete this recording? This action cannot be undone.",
             confirmButton: "Delete",
             onConfirm: { [weak self] in
-                self?.emitEvent("delete")
+                self?.emitTerminalEvent("delete")
             }
         )
     }
@@ -477,6 +477,11 @@ class RecordingControlModule: Module {
     }
     
     private func emitEvent(_ event: String) {
+        emit(event: event)
+    }
+
+    private func emitTerminalEvent(_ event: String) {
+        hidePanel()
         emit(event: event)
     }
     

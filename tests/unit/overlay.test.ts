@@ -32,11 +32,12 @@ describe('recording overlay', () => {
     await expect(showRecordingOverlay(0, 0, 100, 100)).resolves.toBeUndefined();
   });
 
-  it('hide is a no-op when overlay was never shown', async () => {
+  it('hide always sends an idempotent cleanup request', async () => {
+    mockDaemonCall.mockResolvedValue({});
     const { hideRecordingOverlay } =
       await import('@/main/capture/video/overlay');
     await hideRecordingOverlay();
-    expect(mockDaemonCall).not.toHaveBeenCalled();
+    expect(mockDaemonCall).toHaveBeenCalledWith('recording-overlay', 'hide');
   });
 
   it('hide calls daemon after show', async () => {

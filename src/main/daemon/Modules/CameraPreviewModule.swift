@@ -182,7 +182,9 @@ class CameraPreviewModule: Module {
     
     private func hidePanel() {
         contentView?.stopCamera()
+        panel?.contentView = nil
         panel?.orderOut(nil)
+        panel?.close()
         panel = nil
         contentView = nil
     }

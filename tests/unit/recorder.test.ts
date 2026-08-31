@@ -159,6 +159,38 @@ describe('recorder', () => {
       await expect(
         m.startRecordingWithConfig({ outputPath: '/out.mov' }, vi.fn())
       ).rejects.toThrow('bad config');
+      expect(mockHideOverlay).toHaveBeenCalled();
+    });
+
+    it('waits for an in-flight overlay before cleanup when start fails', async () => {
+      let resolveOverlay: () => void = () => {};
+      mockShowOverlay.mockImplementation(
+        () =>
+          new Promise<void>(resolve => {
+            resolveOverlay = resolve;
+          })
+      );
+      mockDaemonCall.mockRejectedValue(new Error('start failed'));
+      const m = await import('@/main/capture/video/recorder');
+      const result = m
+        .startRecordingWithConfig(
+          {
+            x: 10,
+            y: 20,
+            width: 800,
+            height: 600,
+            outputPath: '/out.mov',
+          },
+          vi.fn()
+        )
+        .catch(error => error as Error);
+
+      await Promise.resolve();
+      expect(mockHideOverlay).not.toHaveBeenCalled();
+
+      resolveOverlay();
+      expect((await result).message).toBe('start failed');
+      expect(mockHideOverlay).toHaveBeenCalled();
     });
   });
 
@@ -236,29 +268,30 @@ describe('recorder', () => {
       expect(m.getRecordingState()).toBe('idle');
     });
 
-    it('hides the control before recording finalization completes', async () => {
+    it('hides capture UI before recording finalization completes', async () => {
       mockDaemonCall.mockResolvedValueOnce({ success: true });
       const m = await import('@/main/capture/video/recorder');
       await m.startRecordingWithConfig({ outputPath: '/out.mov' }, vi.fn());
 
-      let resolveStop:
-        | ((response: { success: boolean; outputPath: string }) => void)
-        | undefined;
-      mockDaemonCall.mockImplementationOnce(
-        () =>
-          new Promise(resolve => {
-            resolveStop = resolve;
-          })
-      );
+      let resolveStop: (response: {
+        success: boolean;
+        outputPath: string;
+      }) => void = () => {};
+      const pendingStop = new Promise<{
+        success: boolean;
+        outputPath: string;
+      }>(resolve => {
+        resolveStop = resolve;
+      });
+      mockDaemonCall.mockReturnValueOnce(pendingStop);
 
       const hideControl = vi.fn();
       const stopPromise = m.stopRecording(hideControl);
 
       expect(hideControl).toHaveBeenCalledTimes(1);
-      await Promise.resolve();
-      expect(resolveStop).toBeDefined();
+      expect(mockHideOverlay).toHaveBeenCalledTimes(1);
 
-      resolveStop?.({ success: true, outputPath: '/final/out.mov' });
+      resolveStop({ success: true, outputPath: '/final/out.mov' });
       await expect(stopPromise).resolves.toBe('/final/out.mov');
     });
 

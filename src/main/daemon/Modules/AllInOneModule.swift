@@ -127,8 +127,8 @@ class AllInOneModule: Module {
         contentView = AllInOneContentView(
             frame: NSRect(x: 0, y: 0, width: width, height: height),
             onClose: { [weak self] in self?.emitCloseEvent() },
-            onScreenshot: { [weak self] in self?.emitEvent("screenshot") },
-            onRecord: { [weak self] in self?.emitEvent("record") },
+            onScreenshot: { [weak self] in self?.emitTerminalEvent("screenshot") },
+            onRecord: { [weak self] in self?.emitTerminalEvent("record") },
             onSelectAspectRatio: { [weak self] ratio in self?.handleAspectRatioSelected(ratio) },
             onUpdateSize: { [weak self] width, height in self?.handleSizeUpdated(width: width, height: height) },
             onSizeEditorOpened: { [weak self] in self?.emitEvent("size-editor-opened") },
@@ -168,7 +168,10 @@ class AllInOneModule: Module {
         removeKeyMonitor()
         TooltipManager.shared.hide()
         contentView?.closeSizePopover()
+        panel?.ignoresMouseEvents = true
+        panel?.contentView = nil
         panel?.orderOut(nil)
+        panel?.close()
         panel = nil
         contentView = nil
     }
@@ -195,10 +198,16 @@ class AllInOneModule: Module {
     }
 
     private func emitCloseEvent() {
+        hidePanel()
         emit(event: "close")
     }
 
     private func emitEvent(_ event: String) {
+        emit(event: event)
+    }
+
+    private func emitTerminalEvent(_ event: String) {
+        hidePanel()
         emit(event: event)
     }
 
